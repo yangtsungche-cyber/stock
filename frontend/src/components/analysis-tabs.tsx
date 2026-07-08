@@ -1,0 +1,69 @@
+"use client";
+
+import { GranvillePanel } from "@/components/granville-panel";
+import {
+  AnnouncementsPanel,
+  InstitutionalPanel,
+  MarginPanel,
+} from "@/components/margin-institutional-panel";
+import { PriceChartPanel } from "@/components/price-chart-panel";
+import { Card, CardContent } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
+const LAYERS = [
+  "第二層：波浪理論",
+  "第三層：KD",
+  "第四層：MACD",
+  "第五層：均線乖離率",
+  "第六層：RSI",
+  "第七層：成交量",
+];
+
+function ComingSoon({ label }: { label: string }) {
+  return (
+    <Card>
+      <CardContent className="py-10 text-center text-muted-foreground">
+        {label} 尚未串接，將於後續 Step 完成。
+      </CardContent>
+    </Card>
+  );
+}
+
+export function AnalysisTabs({ symbol }: { symbol: string }) {
+  return (
+    <Tabs defaultValue="chart" className="w-full">
+      <TabsList>
+        <TabsTrigger value="chart">K線圖</TabsTrigger>
+        <TabsTrigger value="layers">八層分析</TabsTrigger>
+        <TabsTrigger value="decision">決策摘要</TabsTrigger>
+        <TabsTrigger value="playbook">Investment Playbook</TabsTrigger>
+      </TabsList>
+
+      <TabsContent value="chart" className="mt-4">
+        <Card>
+          <CardContent className="pt-6">
+            <PriceChartPanel symbol={symbol} />
+          </CardContent>
+        </Card>
+      </TabsContent>
+
+      <TabsContent value="layers" className="mt-4 space-y-3">
+        <GranvillePanel symbol={symbol} />
+        {LAYERS.map((layer) => (
+          <ComingSoon key={layer} label={layer} />
+        ))}
+        <MarginPanel symbol={symbol} />
+        <InstitutionalPanel symbol={symbol} />
+        <AnnouncementsPanel symbol={symbol} />
+      </TabsContent>
+
+      <TabsContent value="decision" className="mt-4">
+        <ComingSoon label="Adaptive Weighted Decision Engine / Explainable AI / Traffic Light" />
+      </TabsContent>
+
+      <TabsContent value="playbook" className="mt-4">
+        <ComingSoon label="Investment Playbook" />
+      </TabsContent>
+    </Tabs>
+  );
+}
