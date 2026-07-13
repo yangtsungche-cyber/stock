@@ -1,23 +1,16 @@
 "use client";
 
 import { GranvillePanel } from "@/components/granville-panel";
+import { IndicatorLayersPanel } from "@/components/indicator-layers-panel";
 import {
   AnnouncementsPanel,
+  ChipsSignalPanel,
   InstitutionalPanel,
   MarginPanel,
 } from "@/components/margin-institutional-panel";
 import { PriceChartPanel } from "@/components/price-chart-panel";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-
-const LAYERS = [
-  "第二層：波浪理論",
-  "第三層：KD",
-  "第四層：MACD",
-  "第五層：均線乖離率",
-  "第六層：RSI",
-  "第七層：成交量",
-];
 
 function ComingSoon({ label }: { label: string }) {
   return (
@@ -49,9 +42,9 @@ export function AnalysisTabs({ symbol }: { symbol: string }) {
 
       <TabsContent value="layers" className="mt-4 space-y-3">
         <GranvillePanel symbol={symbol} />
-        {LAYERS.map((layer) => (
-          <ComingSoon key={layer} label={layer} />
-        ))}
+        <ComingSoon label="第二層：波浪理論" />
+        <IndicatorLayersPanel symbol={symbol} />
+        <ChipsSignalPanel symbol={symbol} />
         <MarginPanel symbol={symbol} />
         <InstitutionalPanel symbol={symbol} />
         <AnnouncementsPanel symbol={symbol} />
