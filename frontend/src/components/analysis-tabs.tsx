@@ -9,20 +9,11 @@ import {
   InstitutionalPanel,
   MarginPanel,
 } from "@/components/margin-institutional-panel";
+import { PlaybookPanel } from "@/components/playbook-panel";
 import { PriceChartPanel } from "@/components/price-chart-panel";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { WavePanel } from "@/components/wave-panel";
-
-function ComingSoon({ label }: { label: string }) {
-  return (
-    <Card>
-      <CardContent className="py-10 text-center text-muted-foreground">
-        {label} 尚未串接，將於後續 Step 完成。
-      </CardContent>
-    </Card>
-  );
-}
 
 export function AnalysisTabs({ symbol }: { symbol: string }) {
   return (
@@ -57,7 +48,7 @@ export function AnalysisTabs({ symbol }: { symbol: string }) {
       </TabsContent>
 
       <TabsContent value="playbook" className="mt-4">
-        <ComingSoon label="Investment Playbook" />
+        <PlaybookPanel symbol={symbol} />
       </TabsContent>
     </Tabs>
   );
