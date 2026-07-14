@@ -38,6 +38,14 @@ LAYER_LABELS = {
 TREND_BOOST = 1.15
 TREND_DAMPEN = 0.85
 
+# Signals carry confidence on a 0-100 scale (see granville/layers/waves/chips).
+# The overall score is normalized against this theoretical "every layer fires
+# at maximum confidence, unanimously" ceiling — not against the weight of
+# whichever signals happened to fire. Normalizing against the latter collapses
+# to a pure direction vote (always ±100 when only one signal exists, no matter
+# how weak), which discards both breadth-of-agreement and confidence.
+MAX_CONFIDENCE = 100.0
+
 # (score floor, verdict code, verdict label) — first band whose floor the
 # score clears, checked from most bullish to most bearish.
 VERDICT_BANDS = (
@@ -87,7 +95,7 @@ def analyze(granville_result: dict, waves_result: dict, layers_result: dict, chi
     tagged: list[dict] = []
     layer_breakdown: list[dict] = []
     raw_total = 0.0
-    weight_total = 0.0
+    max_possible_weight = sum(LAYER_WEIGHTS.values()) * MAX_CONFIDENCE
 
     for layer, signals in layer_signals.items():
         layer_weight = LAYER_WEIGHTS[layer]
@@ -98,7 +106,6 @@ def analyze(granville_result: dict, waves_result: dict, layers_result: dict, chi
             weight = s["confidence"] * layer_weight * mult
             signed = weight if s["side"] == "buy" else -weight
             raw_total += signed
-            weight_total += weight
             layer_raw += signed
             layer_denom += weight
             tagged.append({**s, "layer": layer, "contribution": round(signed, 1)})
@@ -111,7 +118,8 @@ def analyze(granville_result: dict, waves_result: dict, layers_result: dict, chi
             "score": round(100 * layer_raw / layer_denom, 1) if layer_denom else 0.0,
         })
 
-    score = round(100 * raw_total / weight_total, 1) if weight_total else 0.0
+    raw_score = 100 * raw_total / max_possible_weight if max_possible_weight else 0.0
+    score = round(max(-100.0, min(100.0, raw_score)), 1)
     verdict, verdict_label = _verdict(score)
     tagged.sort(key=lambda s: -abs(s["contribution"]))
 
