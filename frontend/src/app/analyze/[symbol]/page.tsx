@@ -4,6 +4,20 @@ import { getMockStock } from "@/lib/mock-stock";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
+async function fetchCompanyInfo(symbol: string) {
+  try {
+    const res = await fetch(`${API_URL}/api/v1/stocks/${encodeURIComponent(symbol)}/info`, {
+      cache: "no-store",
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (typeof data.name !== "string" || (data.market !== "TWSE" && data.market !== "TPEx")) return null;
+    return { name: data.name as string, market: data.market as "TWSE" | "TPEx" };
+  } catch {
+    return null;
+  }
+}
+
 async function fetchLatestQuote(symbol: string) {
   try {
     const res = await fetch(
@@ -36,9 +50,9 @@ export default async function AnalyzePage({
   const { symbol } = await params;
   const decoded = decodeURIComponent(symbol);
   const mock = getMockStock(decoded);
-  const quote = await fetchLatestQuote(decoded);
+  const [info, quote] = await Promise.all([fetchCompanyInfo(decoded), fetchLatestQuote(decoded)]);
 
-  const stock = quote ? { ...mock, ...quote } : mock;
+  const stock = { ...mock, ...(info ?? {}), ...(quote ?? {}) };
 
   return (
     <div className="mx-auto w-full max-w-5xl flex-1 space-y-6 px-4 py-8">

@@ -2,12 +2,21 @@ import asyncio
 
 from fastapi import APIRouter, HTTPException, Query
 
-from app.services import chips, decision, granville, indicators, layers, playbook, twse, waves
+from app.services import chips, company, decision, granville, indicators, layers, playbook, twse, waves
 from app.services.yahoo import StockNotFoundError, get_price_dataframe, get_price_history
 
 router = APIRouter(prefix="/stocks", tags=["stocks"])
 
 VALID_INTERVALS = {"1d", "1wk", "1mo"}
+
+
+@router.get("/{symbol}/info")
+async def get_info(symbol: str) -> dict:
+    """Company name + market (TWSE/TPEx), for the header display."""
+    info = await asyncio.to_thread(company.get_company_info, symbol)
+    if info is None:
+        raise HTTPException(status_code=404, detail=f"找不到股票代號 '{symbol}' 的公司資料")
+    return {"symbol": symbol.strip().upper(), **info}
 
 
 @router.get("/{symbol}/prices")
