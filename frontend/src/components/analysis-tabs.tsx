@@ -1,5 +1,6 @@
 "use client";
 
+import { DecisionSummaryPanel } from "@/components/decision-summary-panel";
 import { GranvillePanel } from "@/components/granville-panel";
 import { IndicatorLayersPanel } from "@/components/indicator-layers-panel";
 import {
@@ -52,7 +53,7 @@ export function AnalysisTabs({ symbol }: { symbol: string }) {
       </TabsContent>
 
       <TabsContent value="decision" className="mt-4">
-        <ComingSoon label="Adaptive Weighted Decision Engine / Explainable AI / Traffic Light" />
+        <DecisionSummaryPanel symbol={symbol} />
       </TabsContent>
 
       <TabsContent value="playbook" className="mt-4">

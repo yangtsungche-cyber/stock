@@ -2,7 +2,7 @@ import asyncio
 
 from fastapi import APIRouter, HTTPException, Query
 
-from app.services import chips, granville, indicators, layers, twse, waves
+from app.services import chips, decision, granville, indicators, layers, twse, waves
 from app.services.yahoo import StockNotFoundError, get_price_dataframe, get_price_history
 
 router = APIRouter(prefix="/stocks", tags=["stocks"])
@@ -126,6 +126,34 @@ async def get_chips(
         asyncio.to_thread(twse.get_institutional_history, symbol, days),
     )
     return {"symbol": symbol.strip().upper(), **chips.analyze(margin_history, institutional_history)}
+
+
+@router.get("/{symbol}/decision")
+async def get_decision(
+    symbol: str,
+    period: str = Query("2y", description="計算指標所需的資料範圍"),
+    days: int = Query(20, ge=1, le=60, description="籌碼面近 N 個交易日"),
+) -> dict:
+    """決策摘要：Adaptive Weighted Decision Engine，整合各層訊號產生綜合買賣判斷。"""
+    try:
+        df, yahoo_symbol = await get_price_dataframe(symbol, interval="1d", period=period)
+    except StockNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    ind = indicators.compute_all(df)
+    margin_history, institutional_history = await asyncio.gather(
+        asyncio.to_thread(twse.get_margin_history, symbol, days),
+        asyncio.to_thread(twse.get_institutional_history, symbol, days),
+    )
+    granville_result = granville.analyze(df, ind)
+    waves_result = waves.analyze(df)
+    layers_result = layers.analyze_layers(ind)
+    chips_result = chips.analyze(margin_history, institutional_history)
+    return {
+        "symbol": symbol.strip().upper(),
+        "yahoo_symbol": yahoo_symbol,
+        "date": ind["dates"][-1],
+        **decision.analyze(granville_result, waves_result, layers_result, chips_result),
+    }
 
 
 @router.get("/{symbol}/announcements")
