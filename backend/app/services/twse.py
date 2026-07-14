@@ -76,13 +76,17 @@ def _fetch_margin_table(date_str: str) -> dict[str, dict] | None:
     if date_str in _margin_cache:
         return _margin_cache[date_str]
 
-    resp = requests.get(
-        MARGIN_URL,
-        params={"response": "json", "date": date_str, "selectType": "ALL"},
-        headers=_HEADERS,
-        timeout=10,
-    )
-    data = resp.json()
+    try:
+        resp = requests.get(
+            MARGIN_URL,
+            params={"response": "json", "date": date_str, "selectType": "ALL"},
+            headers=_HEADERS,
+            timeout=10,
+        )
+        data = resp.json()
+    except (requests.RequestException, ValueError):
+        return None  # transient network/parse failure — don't cache, a later date may still succeed
+
     if data.get("stat") != "OK":
         _margin_cache[date_str] = None
         return None
@@ -101,13 +105,17 @@ def _fetch_institutional_table(date_str: str) -> dict[str, dict] | None:
     if date_str in _institutional_cache:
         return _institutional_cache[date_str]
 
-    resp = requests.get(
-        INSTITUTIONAL_URL,
-        params={"response": "json", "date": date_str, "selectType": "ALL"},
-        headers=_HEADERS,
-        timeout=10,
-    )
-    data = resp.json()
+    try:
+        resp = requests.get(
+            INSTITUTIONAL_URL,
+            params={"response": "json", "date": date_str, "selectType": "ALL"},
+            headers=_HEADERS,
+            timeout=10,
+        )
+        data = resp.json()
+    except (requests.RequestException, ValueError):
+        return None  # transient network/parse failure — don't cache, a later date may still succeed
+
     if data.get("stat") != "OK":
         _institutional_cache[date_str] = None
         return None
@@ -117,6 +125,9 @@ def _fetch_institutional_table(date_str: str) -> dict[str, dict] | None:
     return rows
 
 
+EARLY_EXIT_MISSES = 10  # consecutive lookback days with no row: give up instead of exhausting max_lookback
+
+
 def _collect_history(
     symbol: str,
     days: int,
@@ -124,9 +135,20 @@ def _collect_history(
     numeric_fields: list[str],
     max_lookback: int = 60,
 ) -> list[dict]:
+    """Walk backward day by day collecting rows for `symbol`.
+
+    A symbol that's genuinely absent from this report (e.g. a TPEx-listed
+    stock queried against a TWSE-only report) misses on every single day, so
+    naively exhausting `max_lookback` costs up to 60 sequential HTTP calls to
+    TWSE — 100+ seconds for the slower endpoints. Bailing out after several
+    consecutive misses fails fast in that case without truncating real stocks,
+    which normally have a row on nearly every trading day and rarely miss more
+    than a couple of days in a row (holidays adjacent to the fetched date).
+    """
     results = []
     current = date.today()
     lookback = 0
+    consecutive_misses = 0
 
     while len(results) < days and lookback < max_lookback:
         current -= timedelta(days=1)
@@ -135,13 +157,14 @@ def _collect_history(
             continue
 
         table = fetch_table(current.strftime("%Y%m%d"))
-        if table is None:
-            continue
-
-        row = table.get(symbol)
+        row = table.get(symbol) if table is not None else None
         if row is None:
+            consecutive_misses += 1
+            if consecutive_misses >= EARLY_EXIT_MISSES:
+                break
             continue
 
+        consecutive_misses = 0
         parsed = {k: (_parse_number(v) if k in numeric_fields else v) for k, v in row.items()}
         results.append({"date": current.isoformat(), **parsed})
         time.sleep(0.15)
