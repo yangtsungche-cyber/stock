@@ -3,9 +3,13 @@ invalidation conditions derived from the decision engine's verdict.
 
 Same philosophy as every other module here — plain deterministic rules over
 already-computed data (no LLM call), so the whole site stays consistent and
-explainable. Support/resistance reuse `waves.py`'s ZigZag pivots and its
-ATR-scaled `threshold_pct` as the stop-loss/entry-zone buffer, so the buffer
-is already adapted to the stock's own volatility.
+explainable. Support/resistance reuse `waves.py`'s ZigZag pivots. The
+stop-loss/entry-zone buffer is *derived from* (not equal to) `waves.py`'s
+ATR-scaled `threshold_pct` — that threshold is deliberately wide (ATR x3.5,
+floored at 5%) because its job is filtering noise for wave-pivot detection,
+not sizing a protective stop. Used unscaled it produced buffers of 8-10%+
+(more than a single day's limit-up/down), so it's scaled down and capped
+into a realistic stop-loss range instead.
 """
 
 BUY_SCORE_FLOOR = 15.0
@@ -14,6 +18,12 @@ SELL_SCORE_CEIL = -15.0
 SIZING_HIGH_FLOOR = 40.0
 SIZING_MEDIUM_FLOOR = 15.0
 MIN_RISK_REWARD = 1.5
+
+# Stop-loss/entry-zone buffer: a fraction of the (much wider) ZigZag swing
+# threshold, capped to a realistic protective-stop distance.
+STOP_BUFFER_FLOOR = 0.02
+STOP_BUFFER_CEIL = 0.05
+STOP_BUFFER_SCALE = 0.4
 
 DISCLAIMER = (
     "以上價位與部位建議皆由歷史價量資料以固定規則運算而成，用於輔助決策品質，"
@@ -39,6 +49,10 @@ def _resistance(close: float, ma20: float | None, pivots: list[dict]) -> float |
     if ma20 is not None and ma20 > close:
         return ma20
     return None
+
+
+def _buffer_pct(threshold_pct: float) -> float:
+    return min(STOP_BUFFER_CEIL, max(STOP_BUFFER_FLOOR, threshold_pct * STOP_BUFFER_SCALE))
 
 
 def _position_sizing(stance: str, score: float, risk_reward: float | None) -> dict:
@@ -142,15 +156,16 @@ def analyze(ind: dict, granville_result: dict, waves_result: dict, chips_result:
 
     support = _support(close, ma20, ma60, pivots)
     resistance = _resistance(close, ma20, pivots)
+    buffer_pct = _buffer_pct(threshold_pct)
 
     if score >= BUY_SCORE_FLOOR:
         stance, stance_label = "buy", "偏多操作"
         action_note = "訊號整體偏多，可留意拉回支撐附近的分批進場機會。"
 
         entry_low = round(support, 2)
-        entry_high = round(support * (1 + threshold_pct), 2)
-        stop_loss = round(support * (1 - threshold_pct), 2)
-        stop_note = f"跌破支撐 {support:.2f} 並拉開 {threshold_pct * 100:.1f}% 視為進場論點失效"
+        entry_high = round(support * (1 + buffer_pct), 2)
+        stop_loss = round(support * (1 - buffer_pct), 2)
+        stop_note = f"跌破支撐 {support:.2f} 並拉開 {buffer_pct * 100:.1f}% 視為進場論點失效"
 
         risk = entry_high - stop_loss
         if resistance is not None and resistance > entry_high:
@@ -166,7 +181,7 @@ def analyze(ind: dict, granville_result: dict, waves_result: dict, chips_result:
         action_note = "訊號整體偏空，非新進場買點；若已持有部位，建議留意防守價與逢高調節。"
 
         entry_zone = None
-        stop_loss = round(support * (1 - threshold_pct), 2)
+        stop_loss = round(support * (1 - buffer_pct), 2)
         stop_note = f"若已持有部位，跌破 {stop_loss:.2f}（支撐 {support:.2f} 下緣）建議停損／減碼"
         target = round(resistance, 2) if resistance is not None else None
         risk_reward = None
