@@ -2,7 +2,7 @@ import asyncio
 
 from fastapi import APIRouter, HTTPException, Query
 
-from app.services import chips, granville, indicators, layers, twse
+from app.services import chips, granville, indicators, layers, twse, waves
 from app.services.yahoo import StockNotFoundError, get_price_dataframe, get_price_history
 
 router = APIRouter(prefix="/stocks", tags=["stocks"])
@@ -55,6 +55,24 @@ async def get_granville(
         "yahoo_symbol": yahoo_symbol,
         "date": ind["dates"][-1],
         **granville.analyze(df, ind),
+    }
+
+
+@router.get("/{symbol}/waves")
+async def get_waves(
+    symbol: str,
+    period: str = Query("2y", description="計算波浪所需的資料範圍"),
+) -> dict:
+    """第二層：波浪理論（ZigZag 拐點 + 艾略特波浪硬性規則檢核）。"""
+    try:
+        df, yahoo_symbol = await get_price_dataframe(symbol, interval="1d", period=period)
+    except StockNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {
+        "symbol": symbol.strip().upper(),
+        "yahoo_symbol": yahoo_symbol,
+        "date": df.index[-1].strftime("%Y-%m-%d"),
+        **waves.analyze(df),
     }
 
 

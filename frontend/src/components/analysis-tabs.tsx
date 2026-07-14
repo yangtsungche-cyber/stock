@@ -11,6 +11,7 @@ import {
 import { PriceChartPanel } from "@/components/price-chart-panel";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { WavePanel } from "@/components/wave-panel";
 
 function ComingSoon({ label }: { label: string }) {
   return (
@@ -42,7 +43,7 @@ export function AnalysisTabs({ symbol }: { symbol: string }) {
 
       <TabsContent value="layers" className="mt-4 space-y-3">
         <GranvillePanel symbol={symbol} />
-        <ComingSoon label="第二層：波浪理論" />
+        <WavePanel symbol={symbol} />
         <IndicatorLayersPanel symbol={symbol} />
         <ChipsSignalPanel symbol={symbol} />
         <MarginPanel symbol={symbol} />
