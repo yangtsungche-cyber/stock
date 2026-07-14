@@ -85,6 +85,7 @@ def _position_sizing(stance: str, score: float, risk_reward: float | None) -> di
 def _invalidation(
     stance: str,
     stop_loss: float | None,
+    resistance: float | None,
     ma_alignment: str,
     institutional_streak: dict,
 ) -> list[str]:
@@ -98,8 +99,10 @@ def _invalidation(
         if institutional_streak.get("direction") == "up":
             conditions.append("若三大法人由連續買超轉為連續賣超，籌碼面轉弱，觀點須重新檢視")
     elif stance == "sell":
-        if stop_loss is not None:
-            conditions.append(f"若收盤價站穩 {stop_loss:.2f} 之上，空方／減碼論點失效，可重新評估多方機會")
+        # Invalidating a bearish view means price reclaims resistance, not merely
+        # staying above the downside protective stop (which it always trivially is).
+        if resistance is not None:
+            conditions.append(f"若收盤價站穩壓力 {resistance:.2f} 之上，空方／減碼論點失效，可重新評估多方機會")
         if ma_alignment == "bearish":
             conditions.append("若均線由空頭排列（20<60<120）轉為多頭或交錯排列，趨勢結構轉強，須重新評估")
         if institutional_streak.get("direction") == "down":
@@ -178,7 +181,7 @@ def analyze(ind: dict, granville_result: dict, waves_result: dict, chips_result:
         risk_reward = None
 
     sizing = _position_sizing(stance, score, risk_reward)
-    invalidation = _invalidation(stance, stop_loss, ma_alignment, institutional_streak)
+    invalidation = _invalidation(stance, stop_loss, resistance, ma_alignment, institutional_streak)
 
     return {
         "stance": stance,
