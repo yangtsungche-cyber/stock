@@ -65,3 +65,35 @@ def get_cash_flow(symbol: str) -> list[dict]:
 def get_dividend(symbol: str) -> list[dict]:
     """股利政策：CashEarningsDistribution per fiscal year (配息年數/穩定度)."""
     return _fetch("TaiwanStockDividend", symbol)
+
+
+_universe_cache: list[dict] | None = None
+
+
+def get_stock_universe() -> list[dict]:
+    """全市場股票清單 + 產業分類（`TaiwanStockInfo`）。
+
+    Unlike the per-symbol financial datasets above, this one IS bulk-pullable
+    on the free tier (no `data_id` needed) — it's a reference/classification
+    dataset, not "financial data", so FinMind doesn't gate it behind a paid
+    tier. Used as the screening universe for the full-market candidate pool
+    (sub-system #2), fetched once and cached for the process lifetime.
+    """
+    global _universe_cache
+    if _universe_cache is not None:
+        return _universe_cache
+
+    settings = get_settings()
+    params = {"dataset": "TaiwanStockInfo"}
+    if settings.finmind_token:
+        params["token"] = settings.finmind_token
+
+    try:
+        resp = requests.get(BASE_URL, params=params, headers=_HEADERS, timeout=30)
+        data = resp.json().get("data", [])
+    except (requests.RequestException, ValueError):
+        data = []
+
+    if data:
+        _universe_cache = data
+    return data
