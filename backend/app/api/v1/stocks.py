@@ -2,7 +2,19 @@ import asyncio
 
 from fastapi import APIRouter, HTTPException, Query
 
-from app.services import chips, company, decision, fundamentals, granville, indicators, layers, playbook, twse, waves
+from app.services import (
+    chips,
+    combined,
+    company,
+    decision,
+    fundamentals,
+    granville,
+    indicators,
+    layers,
+    playbook,
+    twse,
+    waves,
+)
 from app.services.yahoo import StockNotFoundError, get_price_dataframe, get_price_history
 
 router = APIRouter(prefix="/stocks", tags=["stocks"])
@@ -162,6 +174,38 @@ async def get_decision(
         "yahoo_symbol": yahoo_symbol,
         "date": ind["dates"][-1],
         **decision.analyze(granville_result, waves_result, layers_result, chips_result),
+    }
+
+
+@router.get("/{symbol}/combined")
+async def get_combined(
+    symbol: str,
+    period: str = Query("2y", description="計算指標所需的資料範圍"),
+    days: int = Query(20, ge=1, le=60, description="籌碼面近 N 個交易日"),
+) -> dict:
+    """技術面 × 基本面綜合判斷：整合決策引擎的技術面燈號與基本面AI評等。"""
+    try:
+        df, yahoo_symbol = await get_price_dataframe(symbol, interval="1d", period=period)
+    except StockNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    ind = indicators.compute_all(df)
+    margin_history, institutional_history = await asyncio.gather(
+        asyncio.to_thread(twse.get_margin_history, symbol, days),
+        asyncio.to_thread(twse.get_institutional_history, symbol, days),
+    )
+    granville_result = granville.analyze(df, ind)
+    waves_result = waves.analyze(df)
+    layers_result = layers.analyze_layers(ind)
+    chips_result = chips.analyze(margin_history, institutional_history)
+    decision_result = decision.analyze(granville_result, waves_result, layers_result, chips_result)
+    fundamentals_result = await asyncio.to_thread(fundamentals.analyze, symbol)
+    return {
+        "symbol": symbol.strip().upper(),
+        "yahoo_symbol": yahoo_symbol,
+        "date": ind["dates"][-1],
+        "technical_score": decision_result["score"],
+        "technical_verdict": decision_result["verdict"],
+        **combined.analyze(decision_result, fundamentals_result),
     }
 
 

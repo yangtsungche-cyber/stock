@@ -1,5 +1,6 @@
 "use client";
 
+import { CombinedVerdictPanel } from "@/components/combined-verdict-panel";
 import { DecisionSummaryPanel } from "@/components/decision-summary-panel";
 import { FundamentalsPanel } from "@/components/fundamentals-panel";
 import { GranvillePanel } from "@/components/granville-panel";
@@ -49,7 +50,8 @@ export function AnalysisTabs({ symbol }: { symbol: string }) {
         <FundamentalsPanel symbol={symbol} />
       </TabsContent>
 
-      <TabsContent value="decision" className="mt-4">
+      <TabsContent value="decision" className="mt-4 space-y-3">
+        <CombinedVerdictPanel symbol={symbol} />
         <DecisionSummaryPanel symbol={symbol} />
       </TabsContent>
 
