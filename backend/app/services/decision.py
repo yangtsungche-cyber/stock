@@ -92,6 +92,25 @@ def analyze(granville_result: dict, waves_result: dict, layers_result: dict, chi
         "institutional": chips_result["institutional"]["signals"],
     }
 
+    # Whether each layer actually had data to evaluate, as opposed to having
+    # data but finding no signal ("有資料，中性" vs "無資料，系統不知道" — these
+    # must not collapse into the same "0 訊號" reading). Price-derived layers
+    # (granville/kd/macd/bias/rsi/volume) always have data if the request got
+    # this far; margin/institutional can be data-less for TPEx-only symbols or
+    # a fetch miss ([[stock-project-step-progress]] fix #3); waves reports its
+    # own "insufficient_data" pattern when too few pivots were found.
+    layer_has_data = {
+        "granville": True,
+        "waves": waves_result.get("pattern") != "insufficient_data",
+        "kd": True,
+        "macd": True,
+        "bias": True,
+        "rsi": True,
+        "volume": True,
+        "margin": chips_result["margin"].get("has_data", True),
+        "institutional": chips_result["institutional"].get("has_data", True),
+    }
+
     tagged: list[dict] = []
     layer_breakdown: list[dict] = []
     raw_total = 0.0
@@ -110,18 +129,33 @@ def analyze(granville_result: dict, waves_result: dict, layers_result: dict, chi
             layer_denom += weight
             tagged.append({**s, "layer": layer, "contribution": round(signed, 1)})
 
+        has_data = layer_has_data[layer]
+        status = "no_data" if not has_data else ("fired" if signals else "neutral")
+
         layer_breakdown.append({
             "layer": layer,
             "label": LAYER_LABELS[layer],
             "weight": layer_weight,
             "signal_count": len(signals),
             "score": round(100 * layer_raw / layer_denom, 1) if layer_denom else 0.0,
+            "status": status,
         })
 
     raw_score = 100 * raw_total / max_possible_weight if max_possible_weight else 0.0
     score = round(max(-100.0, min(100.0, raw_score)), 1)
     verdict, verdict_label = _verdict(score)
     tagged.sort(key=lambda s: -abs(s["contribution"]))
+
+    layers_total = len(LAYER_WEIGHTS)
+    layers_with_data = sum(1 for v in layer_has_data.values() if v)
+    layers_fired = sum(1 for b in layer_breakdown if b["status"] == "fired")
+    coverage = {
+        "layers_total": layers_total,
+        "layers_with_data": layers_with_data,
+        "layers_fired": layers_fired,
+        "coverage_pct": round(100 * layers_fired / layers_with_data, 1) if layers_with_data else 0.0,
+        "no_data_layers": [LAYER_LABELS[l] for l, v in layer_has_data.items() if not v],
+    }
 
     return {
         "score": score,
@@ -131,6 +165,7 @@ def analyze(granville_result: dict, waves_result: dict, layers_result: dict, chi
             "ma_alignment": ma_alignment,
             "note": TREND_NOTES.get(ma_alignment, "均線排列不明確，各訊號權重維持基準值"),
         },
+        "coverage": coverage,
         "layer_breakdown": layer_breakdown,
         "signals": tagged,
     }

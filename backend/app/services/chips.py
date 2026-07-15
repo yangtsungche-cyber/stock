@@ -89,12 +89,17 @@ def analyze_margin(history: list[dict]) -> dict:
                 "reason": "融資餘額持續增加，散戶追價意願提高" if rising else "融資餘額持續減少，籌碼趨於清淡",
             })
 
-    return {"history": rows, "streak": streak, "signals": signals}
+    return {"history": rows, "streak": streak, "signals": signals, "has_data": bool(rows)}
 
 
 def analyze_institutional(history: list[dict]) -> dict:
     if not history:
-        return {"streak": {"direction": None, "days": 0}, "rolling": {}, "signals": []}
+        return {
+            "streak": {"direction": None, "days": 0},
+            "rolling": {},
+            "signals": [],
+            "has_data": False,
+        }
 
     streak = _streak(history, "total_net")
 
@@ -144,7 +149,7 @@ def analyze_institutional(history: list[dict]) -> dict:
                 "confidence": 45, "reason": "外資買超轉為賣超，留意風向轉變",
             })
 
-    return {"streak": streak, "rolling": rolling, "signals": signals}
+    return {"streak": streak, "rolling": rolling, "signals": signals, "has_data": True}
 
 
 def analyze(margin_history: list[dict], institutional_history: list[dict]) -> dict:

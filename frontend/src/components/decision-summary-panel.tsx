@@ -21,12 +21,23 @@ type Signal = {
 
 type LabeledSignal = Signal & { layer_label?: string };
 
+type LayerStatus = "fired" | "neutral" | "no_data";
+
 type LayerBreakdown = {
   layer: string;
   label: string;
   weight: number;
   signal_count: number;
   score: number;
+  status: LayerStatus;
+};
+
+type Coverage = {
+  layers_total: number;
+  layers_with_data: number;
+  layers_fired: number;
+  coverage_pct: number;
+  no_data_layers: string[];
 };
 
 type DecisionResult = {
@@ -35,6 +46,7 @@ type DecisionResult = {
   verdict: Verdict;
   verdict_label: string;
   trend_context: { ma_alignment: string; note: string };
+  coverage: Coverage;
   layer_breakdown: LayerBreakdown[];
   signals: Signal[];
 };
@@ -65,6 +77,29 @@ function ScoreBar({ score }: { score: number }) {
       <div className="flex h-full w-1/2">
         {score > 0 && <div className={`h-full ${barColor}`} style={{ width: `${pct}%` }} />}
       </div>
+    </div>
+  );
+}
+
+function CoverageMeter({ coverage }: { coverage: Coverage }) {
+  const filled = Math.round(coverage.coverage_pct / 20);
+  return (
+    <div className="space-y-1 text-sm">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-muted-foreground">訊號完整度</span>
+        <span aria-hidden className="tracking-tight text-amber-500">
+          {"★".repeat(filled)}
+          <span className="text-muted-foreground">{"★".repeat(5 - filled)}</span>
+        </span>
+        <span className="tabular-nums">
+          {coverage.layers_fired} / {coverage.layers_with_data} 層有訊號（涵蓋率 {coverage.coverage_pct}%）
+        </span>
+      </div>
+      {coverage.no_data_layers.length > 0 && (
+        <p className="text-muted-foreground">
+          無資料，未納入評估：{coverage.no_data_layers.join("、")}
+        </p>
+      )}
     </div>
   );
 }
@@ -179,6 +214,7 @@ export function DecisionSummaryPanel({ symbol }: { symbol: string }) {
             均線排列：{MA_ALIGNMENT_LABEL[data.trend_context.ma_alignment] ?? data.trend_context.ma_alignment}。
             {data.trend_context.note}。
           </p>
+          <CoverageMeter coverage={data.coverage} />
         </CardContent>
       </Card>
 
@@ -188,21 +224,28 @@ export function DecisionSummaryPanel({ symbol }: { symbol: string }) {
         </CardHeader>
         <CardContent>
           <ul className="space-y-2">
-            {data.layer_breakdown.map((l) => (
-              <li key={l.layer} className="flex items-center gap-3 text-sm">
-                <span className="w-40 shrink-0">{l.label}</span>
-                <span className="w-28 shrink-0 text-muted-foreground">
-                  權重 {l.weight.toFixed(1)}・{l.signal_count} 訊號
-                </span>
-                <span className="min-w-0 flex-1">
-                  <ScoreBar score={l.score} />
-                </span>
-                <span className="w-16 shrink-0 text-right tabular-nums">
-                  {l.score > 0 ? "+" : ""}
-                  {l.score}
-                </span>
-              </li>
-            ))}
+            {data.layer_breakdown.map((l) =>
+              l.status === "no_data" ? (
+                <li key={l.layer} className="flex items-center gap-3 text-sm text-muted-foreground">
+                  <span className="w-40 shrink-0">{l.label}</span>
+                  <span className="flex-1">權重 {l.weight.toFixed(1)}・無資料，未納入評估</span>
+                </li>
+              ) : (
+                <li key={l.layer} className="flex items-center gap-3 text-sm">
+                  <span className="w-40 shrink-0">{l.label}</span>
+                  <span className="w-28 shrink-0 text-muted-foreground">
+                    權重 {l.weight.toFixed(1)}・{l.signal_count} 訊號
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <ScoreBar score={l.score} />
+                  </span>
+                  <span className="w-16 shrink-0 text-right tabular-nums">
+                    {l.score > 0 ? "+" : ""}
+                    {l.score}
+                  </span>
+                </li>
+              )
+            )}
           </ul>
         </CardContent>
       </Card>
