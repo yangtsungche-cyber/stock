@@ -2,7 +2,7 @@ import asyncio
 
 from fastapi import APIRouter, HTTPException, Query
 
-from app.services import chips, company, decision, granville, indicators, layers, playbook, twse, waves
+from app.services import chips, company, decision, fundamentals, granville, indicators, layers, playbook, twse, waves
 from app.services.yahoo import StockNotFoundError, get_price_dataframe, get_price_history
 
 router = APIRouter(prefix="/stocks", tags=["stocks"])
@@ -195,6 +195,12 @@ async def get_playbook(
         "verdict_label": decision_result["verdict_label"],
         **playbook.analyze(ind, granville_result, waves_result, chips_result, decision_result),
     }
+
+
+@router.get("/{symbol}/fundamentals")
+async def get_fundamentals(symbol: str) -> dict:
+    """基本面分析頁籤：公司體質／獲利能力／成長能力／股東回報 + AI基本面評等。"""
+    return await asyncio.to_thread(fundamentals.analyze, symbol)
 
 
 @router.get("/{symbol}/announcements")

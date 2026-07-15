@@ -1,6 +1,7 @@
 "use client";
 
 import { DecisionSummaryPanel } from "@/components/decision-summary-panel";
+import { FundamentalsPanel } from "@/components/fundamentals-panel";
 import { GranvillePanel } from "@/components/granville-panel";
 import { IndicatorLayersPanel } from "@/components/indicator-layers-panel";
 import {
@@ -21,6 +22,7 @@ export function AnalysisTabs({ symbol }: { symbol: string }) {
       <TabsList>
         <TabsTrigger value="chart">K線圖</TabsTrigger>
         <TabsTrigger value="layers">八層分析</TabsTrigger>
+        <TabsTrigger value="fundamentals">基本面分析</TabsTrigger>
         <TabsTrigger value="decision">決策摘要</TabsTrigger>
         <TabsTrigger value="playbook">Investment Playbook</TabsTrigger>
       </TabsList>
@@ -41,6 +43,10 @@ export function AnalysisTabs({ symbol }: { symbol: string }) {
         <MarginPanel symbol={symbol} />
         <InstitutionalPanel symbol={symbol} />
         <AnnouncementsPanel symbol={symbol} />
+      </TabsContent>
+
+      <TabsContent value="fundamentals" className="mt-4">
+        <FundamentalsPanel symbol={symbol} />
       </TabsContent>
 
       <TabsContent value="decision" className="mt-4">
