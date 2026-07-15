@@ -103,14 +103,31 @@ def screen_all(
     limit: int = 20,
     universe_limit: int | None = None,
     symbols: list[str] | None = None,
+    max_seconds: float | None = None,
     on_progress=None,
 ) -> list[dict]:
     """掃描全市場，回傳依 AI基本面評等排序的前 `limit` 檔候選股。
 
+    Volume/disposal-stock gates are checked *before* calling
+    `fundamentals.analyze` (which costs 4 FinMind calls) rather than after —
+    both gates come from data already bulk-fetched up front, so skipping
+    illiquid/disposal-listed symbols there avoids ever spending FinMind calls
+    (and the rate-limit delay that comes with them) on stocks that could
+    never become a candidate anyway. In practice most of the ~2300+ universe
+    is thin/illiquid small-caps, so this cuts real run time substantially
+    below the worst-case "every symbol gets the full 4-call treatment"
+    estimate the rate-limit math implies.
+
+    `max_seconds` is a wall-clock time budget: once exceeded, scanning stops
+    and whatever was found so far is ranked and returned — so an overnight
+    run bounded by "I need my laptop back at 6am" still produces a usable
+    (if partial) candidate pool instead of losing everything if the process
+    never reaches the end of the universe.
+
     `universe_limit` truncates the (alphabetically-sorted) scanned universe —
     note this over-represents ETF-style codes (e.g. `00407A`), which sort
-    before plain numeric codes and always yield zero candidates by design
-    (see `fundamentals.analyze`'s `has_data` gate), so it's a smoke test for
+    before plain numeric codes and mostly get skipped by the volume/disposal
+    gate before `fundamentals.analyze` even runs, so it's a smoke test for
     "does the pipeline run end-to-end", not a representative sample.
     `symbols` bypasses the universe entirely with an explicit list — for
     testing against known real companies instead.
@@ -131,24 +148,33 @@ def screen_all(
     disposal_symbols = _load_disposal_symbols()
     daily_volume = _load_daily_volume_lots()
 
+    deadline = time.monotonic() + max_seconds if max_seconds is not None else None
+
     candidates: list[dict] = []
     total = len(universe)
+    scanned = 0
     for i, stock in enumerate(universe, start=1):
-        symbol = stock["symbol"]
-        try:
-            result = fundamentals.analyze(symbol)
-        except Exception:
-            logger.exception("基本面分析失敗，略過 %s", symbol)
-            result = None
+        if deadline is not None and time.monotonic() >= deadline:
+            logger.info("時間預算已到，停止掃描（已掃 %d/%d 檔）", i - 1, total)
+            break
 
-        if result and result["has_data"]:
-            volume_lots = daily_volume.get(symbol)
-            gates_passed = (
-                symbol not in disposal_symbols
-                and volume_lots is not None
-                and volume_lots > DAILY_VOLUME_MIN_LOTS
-            )
-            if gates_passed and result["rating"] is not None:
+        symbol = stock["symbol"]
+        volume_lots = daily_volume.get(symbol)
+        cheap_gates_passed = (
+            symbol not in disposal_symbols
+            and volume_lots is not None
+            and volume_lots > DAILY_VOLUME_MIN_LOTS
+        )
+
+        if cheap_gates_passed:
+            scanned += 1
+            try:
+                result = fundamentals.analyze(symbol)
+            except Exception:
+                logger.exception("基本面分析失敗，略過 %s", symbol)
+                result = None
+
+            if result and result["has_data"] and result["rating"] is not None:
                 candidates.append({
                     **stock,
                     "rating": result["rating"],
@@ -157,11 +183,11 @@ def screen_all(
                     "checklist": result["checklist"],
                     "daily_volume_lots": volume_lots,
                 })
+            time.sleep(SECONDS_PER_SYMBOL)  # only symbols that actually hit FinMind count against the rate limit
 
         if on_progress:
             on_progress(i, total, symbol)
-        if i < total:
-            time.sleep(SECONDS_PER_SYMBOL)
 
+    logger.info("實際呼叫 FinMind 的檔數：%d/%d（其餘因成交量/處置股門檻提前排除）", scanned, total)
     candidates.sort(key=lambda c: c["rating"], reverse=True)
     return candidates[:limit]

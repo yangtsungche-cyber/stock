@@ -1,9 +1,10 @@
 """全市場基本面候選池批次作業 (V3.2 sub-system #2)。
 
 執行方式（於 backend/ 目錄下）：
-    python scripts/screen_fundamentals.py                      # 全市場，約 12-15 小時
+    python scripts/screen_fundamentals.py                      # 全市場，實際耗時視流動性門檻篩掉多少檔而定
     python scripts/screen_fundamentals.py --universe-limit 15  # 小規模測試，幾分鐘內跑完
     python scripts/screen_fundamentals.py --dry-run            # 不寫入 Neon，只印出結果
+    python scripts/screen_fundamentals.py --max-hours 7.5      # 時間預算：到時間就停，把目前掃到的結果寫入
 
 設計要點（與使用者確認過，見 memory 'stock-v32-fundamental-data-research'）：
 FinMind 免費版全市場批次拉取會被擋（需付費），但單股查詢（`data_id`）不受限——所以這支
@@ -62,15 +63,24 @@ def main() -> None:
     parser.add_argument("--limit", type=int, default=20, help="輸出候選股數量（預設 20）")
     parser.add_argument("--universe-limit", type=int, default=None, help="限制掃描檔數（測試用）")
     parser.add_argument("--symbols", type=str, default=None, help="指定股票代號清單（逗號分隔，測試用，略過全市場清單）")
+    parser.add_argument("--max-hours", type=float, default=None, help="時間預算（小時）：到時間就停止掃描，把目前為止的結果排名並寫入")
     parser.add_argument("--dry-run", action="store_true", help="不寫入資料庫，只印出結果")
     args = parser.parse_args()
 
     symbols = args.symbols.split(",") if args.symbols else None
+    max_seconds = args.max_hours * 3600 if args.max_hours is not None else None
 
     start = time.monotonic()
-    logger.info("開始全市場基本面篩選（universe_limit=%s, symbols=%s）", args.universe_limit, symbols)
+    logger.info(
+        "開始全市場基本面篩選（universe_limit=%s, symbols=%s, max_hours=%s）",
+        args.universe_limit, symbols, args.max_hours,
+    )
     candidates = screening.screen_all(
-        limit=args.limit, universe_limit=args.universe_limit, symbols=symbols, on_progress=_progress
+        limit=args.limit,
+        universe_limit=args.universe_limit,
+        symbols=symbols,
+        max_seconds=max_seconds,
+        on_progress=_progress,
     )
     elapsed = time.monotonic() - start
     logger.info("篩選完成，耗時 %.1f 分鐘，候選股 %d 檔", elapsed / 60, len(candidates))
