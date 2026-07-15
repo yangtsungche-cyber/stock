@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { StockSearch } from "@/components/stock-search";
 import { SystemStatus } from "@/components/system-status";
 
@@ -13,6 +14,9 @@ export default function Home() {
         </p>
       </div>
       <StockSearch />
+      <Link href="/watchlist" className="text-sm text-muted-foreground hover:text-foreground">
+        管理自選股池 →
+      </Link>
       <SystemStatus />
     </div>
   );
