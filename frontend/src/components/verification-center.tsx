@@ -23,6 +23,17 @@ const LAYER_LABEL: Record<string, string> = {
   institutional: "三大法人",
 };
 
+type Verdict = "strong_buy" | "buy" | "neutral" | "sell" | "strong_sell";
+
+// Same convention as DecisionSummaryPanel/MarketScanPanel: red = bullish, emerald = bearish, amber = neutral.
+const VERDICT_DOT: Record<Verdict, string> = {
+  strong_buy: "bg-red-600",
+  buy: "bg-red-400",
+  neutral: "bg-amber-500",
+  sell: "bg-emerald-400",
+  strong_sell: "bg-emerald-600",
+};
+
 type LayerStat = { fired_count: number; false_positive_rate: number | null };
 
 type Stats = {
@@ -40,9 +51,10 @@ type Stats = {
 type HistoryRow = {
   id: number;
   stock_code: string;
+  stock_name: string | null;
   analysis_date: string;
   technical_score: number;
-  technical_verdict: string;
+  technical_verdict: Verdict;
   fundamental_rating: number | null;
   combined_label: string;
   confidence_pct: number;
@@ -204,20 +216,27 @@ export function VerificationCenter() {
                   <tr className="text-left">
                     <th className="py-1 pr-2">日期</th>
                     <th className="py-1 pr-2">股票</th>
+                    <th className="py-1 pr-2 text-center">燈號</th>
                     <th className="py-1 pr-2 text-right">技術分數</th>
                     <th className="py-1 pr-2 text-right">T0 收盤</th>
                     <th className="py-1 pr-2 text-right">T+20 收盤</th>
                     <th className="py-1 pr-2 text-right">20天報酬率</th>
+                    <th className="py-1 pr-2">建議</th>
                   </tr>
                 </thead>
                 <tbody>
                   {history.map((row) => (
-                    <tr key={row.id} className="border-t">
+                    <tr key={row.id} className="border-t align-top">
                       <td className="py-1.5 pr-2 text-muted-foreground">{row.analysis_date}</td>
                       <td className="py-1.5 pr-2">
                         <Link href={`/analyze/${row.stock_code}`} className="font-medium hover:underline">
-                          {row.stock_code}
+                          {row.stock_code} {row.stock_name ?? ""}
                         </Link>
+                      </td>
+                      <td className="py-1.5 pr-2">
+                        <div className="flex justify-center">
+                          <span className={`h-3 w-3 rounded-full ${VERDICT_DOT[row.technical_verdict] ?? VERDICT_DOT.neutral}`} />
+                        </div>
                       </td>
                       <td className="py-1.5 pr-2 text-right tabular-nums">
                         {row.technical_score > 0 ? "+" : ""}
@@ -235,6 +254,7 @@ export function VerificationCenter() {
                           </span>
                         )}
                       </td>
+                      <td className="py-1.5 pr-2 text-muted-foreground">{row.combined_label}</td>
                     </tr>
                   ))}
                 </tbody>

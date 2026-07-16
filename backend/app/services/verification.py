@@ -65,6 +65,7 @@ async def record_history(db: AsyncSession, results: list[dict], analysis_date: d
 
         stmt = pg_insert(AnalysisHistory).values(
             stock_code=r["symbol"],
+            stock_name=r.get("name"),
             analysis_date=analysis_date,
             technical_score=r["technical_score"],
             technical_verdict=r["technical_verdict"],
@@ -77,6 +78,7 @@ async def record_history(db: AsyncSession, results: list[dict], analysis_date: d
         stmt = stmt.on_conflict_do_update(
             index_elements=["stock_code", "analysis_date"],
             set_={
+                "stock_name": stmt.excluded.stock_name,
                 "technical_score": stmt.excluded.technical_score,
                 "technical_verdict": stmt.excluded.technical_verdict,
                 "fundamental_rating": stmt.excluded.fundamental_rating,

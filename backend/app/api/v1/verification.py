@@ -15,6 +15,7 @@ router = APIRouter(prefix="/verification", tags=["verification"])
 class HistoryOut(BaseModel):
     id: int
     stock_code: str
+    stock_name: str | None
     analysis_date: date
     technical_score: float
     technical_verdict: str

@@ -30,6 +30,7 @@ class AnalysisHistory(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     stock_code: Mapped[str] = mapped_column(String, nullable=False)
+    stock_name: Mapped[str | None] = mapped_column(String, nullable=True)
     analysis_date: Mapped[date] = mapped_column(Date, nullable=False)
 
     technical_score: Mapped[float] = mapped_column(Float, nullable=False)
