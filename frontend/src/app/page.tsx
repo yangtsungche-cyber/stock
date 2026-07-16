@@ -15,9 +15,14 @@ export default function Home() {
         </p>
       </div>
       <StockSearch />
-      <Link href="/watchlist" className="text-sm text-muted-foreground hover:text-foreground">
-        管理自選股池 →
-      </Link>
+      <div className="flex gap-4">
+        <Link href="/watchlist" className="text-sm text-muted-foreground hover:text-foreground">
+          管理自選股池 →
+        </Link>
+        <Link href="/verification" className="text-sm text-muted-foreground hover:text-foreground">
+          分析驗證中心 →
+        </Link>
+      </div>
       <MarketScanPanel />
       <SystemStatus />
     </div>

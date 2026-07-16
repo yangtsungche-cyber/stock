@@ -29,7 +29,7 @@ import asyncio
 import logging
 
 from app.models import FundamentalCandidate, StockWatchlist
-from app.services import chips, combined, decision, fundamentals, granville, indicators, layers, twse, waves
+from app.services import chips, combined, company, decision, fundamentals, granville, indicators, layers, twse, waves
 from app.services.yahoo import StockNotFoundError, get_price_dataframe
 
 logger = logging.getLogger(__name__)
@@ -99,10 +99,12 @@ async def _analyze_one(symbol: str, meta: dict) -> dict:
         **base,
         "yahoo_symbol": yahoo_symbol,
         "date": ind["dates"][-1],
+        "close": ind["close"][-1],
         "technical_score": decision_result["score"],
         "technical_verdict": decision_result["verdict"],
         "technical_verdict_label": decision_result["verdict_label"],
         "confidence_pct": decision_result["coverage"]["coverage_pct"],
+        "layer_breakdown": decision_result["layer_breakdown"],
         "fundamental_rating": fundamentals_result.get("rating"),
         "fundamental_rating_label": fundamentals_result.get("rating_label"),
         "combined_label": combined_result["combined_label"],
@@ -111,9 +113,21 @@ async def _analyze_one(symbol: str, meta: dict) -> dict:
 
 
 async def run_scan(
-    watchlist_entries: list[StockWatchlist], candidates: list[FundamentalCandidate]
+    watchlist_entries: list[StockWatchlist],
+    candidates: list[FundamentalCandidate],
+    symbols_override: list[str] | None = None,
 ) -> list[dict]:
-    merged = merge_symbols(watchlist_entries, candidates)
+    """`symbols_override` 略過自選股池/候選池合併，直接指定股票代號——測試用，
+    或想針對單一/少數幾檔股票重新掃描而不必等整個市場總表跑完時使用（與
+    `screening.screen_all` 的 `symbols` 參數同樣的用途）。
+    """
+    if symbols_override is not None:
+        merged = {}
+        for s in symbols_override:
+            info = company.get_company_info(s) or {"name": s}
+            merged[s.strip().upper()] = {"name": info["name"], "category": "自訂", "source": "manual", "candidate": None}
+    else:
+        merged = merge_symbols(watchlist_entries, candidates)
     semaphore = asyncio.Semaphore(MAX_CONCURRENCY)
 
     async def bounded(symbol: str, meta: dict) -> dict:
