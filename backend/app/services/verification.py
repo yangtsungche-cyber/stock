@@ -25,6 +25,7 @@ All thresholds are named module constants per the spec's own "所有權重／
 """
 
 from datetime import date, datetime, timezone
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -35,6 +36,16 @@ from app.services.yahoo import StockNotFoundError, get_price_dataframe
 
 TRADING_DAYS_HORIZON = 20  # 「20 天後報酬率」的天數，以實際交易日計算，非日曆日
 BACKFILL_LOOKUP_PERIOD = "2y"  # 需涵蓋 analysis_date 到現在，確保足以找到 T+20 交易日
+
+TAIWAN_TZ = ZoneInfo("Asia/Taipei")
+
+
+def taiwan_today() -> date:
+    """今天的日期，以台灣時區為準——不能用 `date.today()`，那會用執行環境的系統時區
+    （Cloud Run 容器預設 UTC，本機開發機多半是 Asia/Taipei），同一支程式在不同環境
+    會算出不同的「今天」，導致 analysis_date 錯位（例如台北時間 23:30 在 UTC 還是
+    前一天，UTC 午夜前後的排程會被誤判成同一個交易日而被 upsert 覆蓋掉）。"""
+    return datetime.now(TAIWAN_TZ).date()
 
 BULLISH_VERDICTS = {"buy", "strong_buy"}
 BEARISH_VERDICTS = {"sell", "strong_sell"}

@@ -1,5 +1,3 @@
-from datetime import date
-
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -32,5 +30,5 @@ async def run_market_scan(
         candidates = list(candidates_result.scalars().all())
 
     results = await scan.run_scan(watchlist_entries, candidates, symbols_override=symbols_override)
-    await verification.record_history(db, results, date.today())
+    await verification.record_history(db, results, verification.taiwan_today())
     return {"count": len(results), "results": results}
