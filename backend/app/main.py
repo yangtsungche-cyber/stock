@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1.health import router as health_router
+from app.api.v1.scan import router as scan_router
 from app.api.v1.stocks import router as stocks_router
 from app.api.v1.watchlist import router as watchlist_router
 from app.core.config import get_settings
@@ -20,6 +21,7 @@ app.add_middleware(
 )
 
 app.include_router(health_router, prefix="/api/v1")
+app.include_router(scan_router, prefix="/api/v1")
 app.include_router(stocks_router, prefix="/api/v1")
 app.include_router(watchlist_router, prefix="/api/v1")
 

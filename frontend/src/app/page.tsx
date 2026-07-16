@@ -1,10 +1,11 @@
 import Link from "next/link";
+import { MarketScanPanel } from "@/components/market-scan-panel";
 import { StockSearch } from "@/components/stock-search";
 import { SystemStatus } from "@/components/system-status";
 
 export default function Home() {
   return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-8 px-4 py-16">
+    <div className="flex flex-1 flex-col items-center gap-8 px-4 py-16">
       <div className="text-center">
         <h1 className="text-3xl font-semibold tracking-tight">
           Jerry AI Stock Analyst Pro
@@ -17,6 +18,7 @@ export default function Home() {
       <Link href="/watchlist" className="text-sm text-muted-foreground hover:text-foreground">
         管理自選股池 →
       </Link>
+      <MarketScanPanel />
       <SystemStatus />
     </div>
   );
