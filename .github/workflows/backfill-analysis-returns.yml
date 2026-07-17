@@ -1,0 +1,16 @@
+name: Daily Analysis Return Backfill
+
+# 每個交易日台北時間 18:00 觸發（10:00 UTC）——挑收盤後而非開盤前，確保當天的價格資料已經
+# 落地可供 T+20 回填讀取。`verification.backfill_matured` 本身是冪等的（只處理尚未滿 20 個
+# 交易日的紀錄，滿足才回填），天天呼叫不會有重複寫入或副作用。
+on:
+  schedule:
+    - cron: "0 10 * * 1-5"
+  workflow_dispatch: {}
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger analysis history backfill
+        run: curl -sf --max-time 300 -X POST "https://stock-backend-884724294224.asia-east1.run.app/api/v1/verification/backfill"

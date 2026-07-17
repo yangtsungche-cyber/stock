@@ -21,7 +21,7 @@
 | 項目 | 現況 / 風險 | 建議 |
 |---|---|---|
 | `/api/v1/morning-briefing/generate` 單次耗時 | 本地實測：正常幾秒，但曾出現一次 **約 2-3 分鐘**才回應（yfinance 的 `.info`，也就是 `regularMarketPrice` 的來源，比 `.history()` 慢且不穩定，是 yfinance 本身已知的特性，不是我們程式的 bug） | Cloud Run 服務的 **request timeout**（Console → 服務 → 編輯修訂版本 → 「要求逾時」）務必 **≥ 300 秒**，建議抓 540~600 秒的安全邊際，避免 yfinance 一慢就被 Cloud Run 自己先掐斷連線 |
-| GitHub Actions 呼叫端 (`curl`) | `.github/workflows/morning-briefing.yml` 目前的 `curl -sf -X POST ...` **沒有** `--max-time`，代表 curl 會無限等待（直到 GitHub Actions job 本身的預設上限，長達數小時），失敗時不會有清楚的逾時訊息 | 建議之後補上 `curl -sf --max-time 300 -X POST ...`，讓逾時行為明確可控，且與 Cloud Run 自己設定的 request timeout 對齊 |
+| GitHub Actions 呼叫端 (`curl`) | **已修正**：`.github/workflows/morning-briefing.yml` 與新增的 `.github/workflows/backfill-analysis-returns.yml` 都已加上 `curl -sf --max-time 300 -X POST ...`，讓逾時行為明確可控，且與 Cloud Run 自己設定的 request timeout 對齊 | — |
 | DB 連線 timeout（`connect_args={"timeout": 5}`，見 `backend/app/core/database.py`） | 5 秒對「Neon 免費方案 compute 因閒置被 autosuspend、需要冷啟動喚醒」這種情境可能太短——這正是下面第 2 節分析的崩潰主因之一 | 建議加大到 10~15 秒，或改用重試（見第 2.2 節的程式建議），不要只靠拉長單次 timeout |
 | Cloud Run 冷啟動 × Neon 冷啟動 疊加 | 08:30 排程前一整晚很可能沒有任何流量，Cloud Run（若 min-instances=0）跟 Neon（免費方案本身也會 autosuspend）**很可能同時都處於閒置/暫停狀態**，兩者的喚醒延遲會疊加在同一次請求上 | 若不想額外付費，至少要確保 `create_tables` 有重試邏輯（見第 2.2 節）；若想徹底避免，可考慮把 Cloud Run 的 min-instances 設為 1（會持續產生費用，是取捨，不是必要項） |
 
@@ -143,6 +143,7 @@ async def create_tables() -> None:
 2. 確認 Cloud Run 服務的 request timeout ≥ 300 秒（建議 540~600 秒，第 1.1 節）。
 3. ~~套用第 2.2 節的 `create_tables` try/except＋重試~~ —— **已完成**（2026-07-17），降低單次 DB
    連線問題演變成整個服務起不來的機率。
-4. Push 後，先手動用 GitHub Actions 頁面的 `workflow_dispatch` 觸發一次
-   `.github/workflows/morning-briefing.yml`，確認 `POST /api/v1/morning-briefing/generate` 在正式
-   環境也能在合理時間內成功，再放心讓它照 08:30 排程自動跑。
+4. Push 後，先手動用 GitHub Actions 頁面的 `workflow_dispatch` 分別觸發一次
+   `.github/workflows/morning-briefing.yml`（確認 `POST /api/v1/morning-briefing/generate` 在正式
+   環境能在合理時間內成功）與 `.github/workflows/backfill-analysis-returns.yml`（確認
+   `POST /api/v1/verification/backfill` 正常運作），再放心讓兩者照各自的排程自動跑。

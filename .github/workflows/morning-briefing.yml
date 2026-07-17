@@ -13,4 +13,4 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Trigger morning briefing generation
-        run: curl -sf -X POST "https://stock-backend-884724294224.asia-east1.run.app/api/v1/morning-briefing/generate"
+        run: curl -sf --max-time 300 -X POST "https://stock-backend-884724294224.asia-east1.run.app/api/v1/morning-briefing/generate"
