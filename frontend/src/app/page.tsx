@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { MarketScanPanel } from "@/components/market-scan-panel";
+import { OvernightSentimentPanel } from "@/components/overnight-sentiment-panel";
 import { StockSearch } from "@/components/stock-search";
 import { SystemStatus } from "@/components/system-status";
 
@@ -24,6 +25,7 @@ export default function Home() {
         </Link>
       </div>
       <MarketScanPanel />
+      <OvernightSentimentPanel />
       <SystemStatus />
     </div>
   );

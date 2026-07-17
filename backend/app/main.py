@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1.health import router as health_router
+from app.api.v1.overnight_sentiment import router as overnight_sentiment_router
 from app.api.v1.scan import router as scan_router
 from app.api.v1.stocks import router as stocks_router
 from app.api.v1.verification import router as verification_router
@@ -22,6 +23,7 @@ app.add_middleware(
 )
 
 app.include_router(health_router, prefix="/api/v1")
+app.include_router(overnight_sentiment_router, prefix="/api/v1")
 app.include_router(scan_router, prefix="/api/v1")
 app.include_router(stocks_router, prefix="/api/v1")
 app.include_router(verification_router, prefix="/api/v1")
