@@ -1,3 +1,6 @@
+import asyncio
+import logging
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -10,6 +13,13 @@ from app.api.v1.verification import router as verification_router
 from app.api.v1.watchlist import router as watchlist_router
 from app.core.config import get_settings
 from app.core.database import Base, engine
+
+logger = logging.getLogger(__name__)
+
+# 給 Neon 免費方案從 autosuspend 喚醒的緩衝時間 —— 見 README_V4_DEPLOY.md 第 2 節，
+# 這是一次離峰時段（Neon compute 剛好處於暫停狀態）啟動崩潰事故的根因分析。
+DB_STARTUP_RETRY_ATTEMPTS = 3
+DB_STARTUP_RETRY_DELAY_SECONDS = 3
 
 settings = get_settings()
 
@@ -37,5 +47,27 @@ async def create_tables() -> None:
     # No Alembic migrations yet — fine for this project's current scale, see
     # memory 'stock-project-step-progress' Step 10. Revisit once schema
     # changes need to preserve existing data instead of just adding tables.
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    #
+    # Retries + swallows the final failure on purpose: an uncaught exception here aborts
+    # FastAPI's whole ASGI lifespan startup, so uvicorn never starts accepting requests at
+    # all — Cloud Run then marks the revision unhealthy and every caller gets a 503 that
+    # looks like an API bug but is actually "the container never finished starting." A
+    # transient DB connect failure (e.g. Neon's free-tier compute waking from autosuspend)
+    # should degrade to "DB-dependent endpoints error until the DB is reachable," not take
+    # down the entire service — same philosophy as this app's existing has_data:false
+    # graceful-degradation pattern (chips.py/fundamentals.py/overnight_sentiment.py), just
+    # applied to the startup lifespan.
+    for attempt in range(1, DB_STARTUP_RETRY_ATTEMPTS + 1):
+        try:
+            async with engine.begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
+            return
+        except Exception:
+            logger.exception(
+                "create_tables 第 %d/%d 次嘗試失敗，資料庫可能尚在啟動或喚醒中",
+                attempt, DB_STARTUP_RETRY_ATTEMPTS,
+            )
+            if attempt < DB_STARTUP_RETRY_ATTEMPTS:
+                await asyncio.sleep(DB_STARTUP_RETRY_DELAY_SECONDS)
+
+    logger.error("create_tables 最終仍失敗，服務照常啟動，但資料庫相關端點在資料庫恢復前都會回傳錯誤")
