@@ -26,6 +26,9 @@ export default function Home() {
         <Link href="/quality-stocks" className="text-sm text-muted-foreground hover:text-foreground">
           財報狗績優股清單 →
         </Link>
+        <Link href="/portfolio" className="text-sm text-muted-foreground hover:text-foreground">
+          持股庫存盤點 →
+        </Link>
       </div>
       <MarketScanPanel />
       <OvernightSentimentPanel />

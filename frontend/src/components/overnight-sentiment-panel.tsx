@@ -5,10 +5,9 @@ import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SUGGESTION_BADGE, type Suggestion } from "@/lib/suggestion-badge";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-
-type Suggestion = "add" | "hold" | "watch" | "trim";
 
 type MacroComponent = {
   code: string;
@@ -43,14 +42,6 @@ type Briefing = {
   generated_at: string;
   macro: MacroBlock;
   stocks: StockRow[];
-};
-
-// Same red=bullish/emerald=bearish/amber=neutral convention as the rest of this app.
-const SUGGESTION_BADGE: Record<Suggestion, string> = {
-  add: "bg-red-600 text-white",
-  hold: "bg-amber-500 text-white",
-  watch: "bg-amber-400 text-white",
-  trim: "bg-emerald-600 text-white",
 };
 
 // Colored by this component's own `score` (bullish/bearish for the overall sentiment reading),
