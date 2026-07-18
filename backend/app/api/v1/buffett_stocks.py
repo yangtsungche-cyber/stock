@@ -24,6 +24,7 @@ def _serialize(row: BuffettCandidate) -> dict:
         "fcf_per_share_latest": row.fcf_per_share_latest,
         "fcf_per_share_3y_avg": row.fcf_per_share_3y_avg,
         "fcf_per_share_5y_avg": row.fcf_per_share_5y_avg,
+        "volume_lots": row.volume_lots,
         "screened_at": row.screened_at.isoformat(),
     }
 

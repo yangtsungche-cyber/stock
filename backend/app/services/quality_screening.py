@@ -75,16 +75,6 @@ def _pivot(rows: list[dict]) -> dict[str, dict[str, float]]:
     return dict(sorted(out.items()))
 
 
-def _annual_sum(quarters_by_date: dict[str, dict[str, float]], field: str) -> dict[int, float]:
-    """Sum `field` over each fiscal year's 4 quarters; only years with all 4 present."""
-    by_year: dict[int, list[float]] = {}
-    for d, fields in quarters_by_date.items():
-        if field not in fields:
-            continue
-        by_year.setdefault(int(d[:4]), []).append(fields[field])
-    return {year: sum(vals) for year, vals in by_year.items() if len(vals) == 4}
-
-
 def _invested_capital_by_year(bs_by_date: dict[str, dict[str, float]]) -> dict[int, float]:
     """公司投入資本 = 股東權益 + 長短期金融負債, read off each fiscal year-end (12/31) balance sheet."""
     capital: dict[int, float] = {}
@@ -100,15 +90,29 @@ def _invested_capital_by_year(bs_by_date: dict[str, dict[str, float]]) -> dict[i
 
 
 def _fcf_return_by_year(bs_by_date: dict[str, dict[str, float]], cf_by_date: dict[str, dict[str, float]]) -> dict[int, float]:
-    ocf_by_year = _annual_sum(cf_by_date, "CashFlowsFromOperatingActivities")
-    capex_by_year = _annual_sum(cf_by_date, "PropertyAndPlantAndEquipment")  # already outflow-signed, see fundamentals.py
+    """自由現金流報酬率 = (營業現金流 + 資本支出) / 投入資本, 讀每個會計年度 12/31 那筆資料.
+
+    FinMind's `TaiwanStockCashFlowsStatement` reports cash-flow figures as **cumulative
+    year-to-date** (confirmed by inspecting raw quarterly values — each quarter's figure is
+    >= the previous quarter within the same year). The 12/31 row IS the full-year figure
+    already; summing all 4 quarters (the previous approach here, shared with
+    `buffett_screening.py`'s now-fixed equivalent bug) roughly triple/quadruple-counts most of
+    the year. Reading the 12/31 row directly reproduces real figures exactly (verified via
+    `buffett_screening.py`'s cross-check against published 財報狗 numbers).
+    """
     capital_by_year = _invested_capital_by_year(bs_by_date)
 
     returns: dict[int, float] = {}
-    for year, ocf in ocf_by_year.items():
-        capex = capex_by_year.get(year)
+    for d, fields in cf_by_date.items():
+        if not d.endswith("-12-31"):
+            continue
+        ocf = fields.get("CashFlowsFromOperatingActivities")
+        capex = fields.get("PropertyAndPlantAndEquipment")  # already outflow-signed, see fundamentals.py
+        if ocf is None or capex is None:
+            continue
+        year = int(d[:4])
         capital = capital_by_year.get(year)
-        if capex is None or not capital:
+        if not capital:
             continue
         returns[year] = (ocf + capex) / capital * 100
     return returns

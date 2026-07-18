@@ -29,7 +29,8 @@ type BuffettStockRow = {
   roe_5y_avg_pct: number;
   fcf_per_share_latest: number;
   fcf_per_share_3y_avg: number;
-  fcf_per_share_5y_avg: number;
+  fcf_per_share_5y_avg: number | null;
+  volume_lots: number | null;
 };
 
 type BuffettStocksResponse = {
@@ -37,10 +38,10 @@ type BuffettStocksResponse = {
   stocks: BuffettStockRow[];
 };
 
-function Trio({ latest, y3, y5, unit }: { latest: number; y3: number; y5: number; unit: string }) {
+function Trio({ latest, y3, y5, unit }: { latest: number; y3: number; y5: number | null; unit: string }) {
   return (
     <span className="tabular-nums">
-      {latest.toFixed(1)}{unit} / {y3.toFixed(1)}{unit} / {y5.toFixed(1)}{unit}
+      {latest.toFixed(1)}{unit} / {y3.toFixed(1)}{unit} / {y5 != null ? `${y5.toFixed(1)}${unit}` : "—"}
     </span>
   );
 }
@@ -115,9 +116,9 @@ export function BuffettStocksList() {
       </CardHeader>
       <CardContent className="space-y-4">
         <p className="text-sm text-muted-foreground">
-          全市場批次篩選：負債比率、ROE、每股自由現金流三項指標，近一年／近三年平均／近五年平均
-          共 9 項條件須全部達標。全市場批次需數小時，由後台排程/手動執行
-          `screen_buffett_stocks.py` 產生，此處僅顯示最新一次結果快照。
+          負債比率、ROE、每股自由現金流三項指標，近一年／近三年平均／近五年平均共 9 項條件須全部達標。
+          目前清單為財報狗官網「選股大師／巴菲特選股」實際篩選結果（已補上即時成交量），
+          此處僅顯示最新一次匯入的快照。
         </p>
 
         {status === "loading" && <p className="text-sm text-muted-foreground">讀取中…</p>}
@@ -144,6 +145,7 @@ export function BuffettStocksList() {
                     <th className="py-1 pr-2 text-right">負債比率(1y/3y/5y)</th>
                     <th className="py-1 pr-2 text-right">ROE(1y/3y/5y)</th>
                     <th className="py-1 pr-2 text-right">每股FCF(1y/3y/5y)</th>
+                    <th className="py-1 pr-2 text-right">成交量(張)</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -166,6 +168,9 @@ export function BuffettStocksList() {
                       </td>
                       <td className="py-1.5 pr-2 text-right">
                         <Trio latest={row.fcf_per_share_latest} y3={row.fcf_per_share_3y_avg} y5={row.fcf_per_share_5y_avg} unit="" />
+                      </td>
+                      <td className="py-1.5 pr-2 text-right tabular-nums">
+                        {row.volume_lots != null ? row.volume_lots.toLocaleString(undefined, { maximumFractionDigits: 0 }) : "—"}
                       </td>
                     </tr>
                   ))}

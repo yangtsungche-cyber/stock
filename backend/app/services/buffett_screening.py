@@ -36,6 +36,15 @@ ROE_MIN = 15.0  # percent
 FCF_PER_SHARE_MIN = 0.0
 MIN_YEARS = 5  # need this many fiscal years where all 3 metrics are simultaneously computable
 
+# Local, deliberately much looser than screening.DAILY_VOLUME_MIN_LOTS (3000, shared with
+# quality_screening.py). Verified against all 42 real 財報狗 Buffett-screen matches: every single
+# one trades under 3000 lots/day (max ~2375, min ~23 for 6482), since Buffett-profile companies
+# (family-controlled, low-debt, high-ROE) tend to have low free float / low daily turnover in
+# Taiwan — the shared 3000-lot gate excluded 41 of 42 real matches. Set below the observed real
+# minimum (23 lots) so it doesn't cut off genuine matches, while still excluding effectively
+# no-trading tickers (0-a few lots/day).
+BUFFETT_DAILY_VOLUME_MIN_LOTS = 20
+
 PAR_VALUE = 10.0  # TW convention: NT$10 face value per share, shares outstanding ~= CapitalStock / 10
 
 FINMIND_CALLS_PER_SYMBOL = 3  # balance sheet + cash flow + financial statements
@@ -92,24 +101,53 @@ def _debt_ratio_by_year(bs_by_date: dict[str, dict[str, float]]) -> dict[int, fl
 
 
 def _roe_by_year(bs_by_date: dict[str, dict[str, float]], fs_by_date: dict[str, dict[str, float]]) -> dict[int, float]:
+    """ROE = 淨利 / 平均股東權益（期初期末平均), not year-end-only equity.
+
+    Verified against real 財報狗 published figures (5274/6515/8390): year-end-only equity
+    systematically understates ROE for growing-equity companies (average equity < year-end
+    equity), by exactly the amount needed to explain the discrepancy — average-equity ROE
+    matches 財報狗's published 1/3/5-year figures to the basis point.
+    """
     net_income_by_year = _annual_sum(fs_by_date, "IncomeAfterTaxes")
     equity_by_year = _year_end_field(bs_by_date, "Equity")
-    return {
-        year: net_income / equity_by_year[year] * 100
-        for year, net_income in net_income_by_year.items()
-        if year in equity_by_year
-    }
+    result: dict[int, float] = {}
+    for year, net_income in net_income_by_year.items():
+        if year not in equity_by_year:
+            continue
+        prior_equity = equity_by_year.get(year - 1)
+        avg_equity = (equity_by_year[year] + prior_equity) / 2 if prior_equity is not None else equity_by_year[year]
+        result[year] = net_income / avg_equity * 100
+    return result
 
 
 def _fcf_per_share_by_year(bs_by_date: dict[str, dict[str, float]], cf_by_date: dict[str, dict[str, float]]) -> dict[int, float]:
-    ocf_by_year = _annual_sum(cf_by_date, "CashFlowsFromOperatingActivities")
-    capex_by_year = _annual_sum(cf_by_date, "PropertyAndPlantAndEquipment")  # already outflow-signed
-    capital_stock_by_year = _year_end_field(bs_by_date, "CapitalStock")
+    """每股自由現金流 = (營業現金流 + 資本支出) / 股數，讀每個會計年度 12/31 那筆資料.
+
+    FinMind's `TaiwanStockCashFlowsStatement` reports cash-flow figures as **cumulative
+    year-to-date** (unlike the income statement, which FinMind normalizes to discrete
+    quarters) — confirmed by inspecting raw quarterly values (each quarter >= the previous
+    within a year). The 12/31 row IS the full-year figure already; summing all 4 quarters
+    (the old approach, mirroring `_annual_sum`) triple/quadruple-counts most of the year and
+    was the dominant cause of FCF-per-share reading ~2-3x too high vs 財報狗's published
+    numbers. Reading the 12/31 row directly (like `_year_end_field` does for balance-sheet
+    fields) reproduces 財報狗's figures exactly.
+
+    Also fixes a second, narrower bug: `_annual_sum`-style logic required all 4 quarters to
+    be present, which silently dropped years for asset-light companies whose capex postings
+    are omitted (not zeroed) in immaterial quarters — the 12/31 row is reported even when the
+    year's capex is 0, so this now correctly includes those years too.
+    """
     result: dict[int, float] = {}
-    for year, ocf in ocf_by_year.items():
-        capex = capex_by_year.get(year)
-        capital_stock = capital_stock_by_year.get(year)
-        if capex is None or not capital_stock:
+    for d, fields in cf_by_date.items():
+        if not d.endswith("-12-31"):
+            continue
+        ocf = fields.get("CashFlowsFromOperatingActivities")
+        capex = fields.get("PropertyAndPlantAndEquipment")  # already outflow-signed
+        if ocf is None or capex is None:
+            continue
+        year = int(d[:4])
+        capital_stock = bs_by_date.get(d, {}).get("CapitalStock")
+        if not capital_stock:
             continue
         shares = capital_stock / PAR_VALUE
         result[year] = (ocf + capex) / shares
@@ -132,7 +170,17 @@ def _fetch_metrics(symbol: str) -> dict[str, dict[int, float]]:
 
 
 def evaluate(symbol: str, metrics: dict[str, dict[int, float]] | None = None) -> dict:
-    """Checks all 9 conditions for one symbol. Does not rank — `screen_all` sorts survivors after."""
+    """Checks all 9 conditions for one symbol. Does not rank — `screen_all` sorts survivors after.
+
+    Each of the 3 metrics needs >= MIN_YEARS of **its own** history — not a shared intersection
+    across all 3. FinMind's 3 source datasets (balance sheet, cash flow, income statement) don't
+    always start coverage in the same fiscal year for a given company (e.g. an income-statement
+    field missing for a company's IPO-partial-year), so requiring a simultaneous common window
+    wrongly excluded real 財報狗-passing companies whose individual metrics were each independently
+    long enough. Verified against 6482 (in the real 42-stock list): debt ratio has 6 years, ROE only
+    5 (2020 excluded — IPO-year partial quarters), FCF/share 6 — no single 5-year window shared by
+    all 3 under the old intersection logic misses the case where each metric's OWN window is fine.
+    """
     symbol = symbol.strip().upper()
     if metrics is None:
         metrics = _fetch_metrics(symbol)
@@ -141,16 +189,15 @@ def evaluate(symbol: str, metrics: dict[str, dict[int, float]] | None = None) ->
     roe_by_year = metrics["roe_by_year"]
     fcf_by_year = metrics["fcf_per_share_by_year"]
 
-    common_years = sorted(set(debt_by_year) & set(roe_by_year) & set(fcf_by_year), reverse=True)
-    if len(common_years) < MIN_YEARS:
-        return {"symbol": symbol, "has_data": False, "passed": False, "reason": "資料不足（三項指標同時齊全的財報年度少於5年）"}
+    debt_years = sorted(debt_by_year, reverse=True)
+    roe_years = sorted(roe_by_year, reverse=True)
+    fcf_years = sorted(fcf_by_year, reverse=True)
+    if min(len(debt_years), len(roe_years), len(fcf_years)) < MIN_YEARS:
+        return {"symbol": symbol, "has_data": False, "passed": False, "reason": "資料不足（負債比率/ROE/每股FCF 其中一項的財報年度少於5年）"}
 
-    latest = common_years[0]
-    last3, last5 = common_years[:3], common_years[:5]
-
-    debt_latest, debt_3y, debt_5y = debt_by_year[latest], _avg([debt_by_year[y] for y in last3]), _avg([debt_by_year[y] for y in last5])
-    roe_latest, roe_3y, roe_5y = roe_by_year[latest], _avg([roe_by_year[y] for y in last3]), _avg([roe_by_year[y] for y in last5])
-    fcf_latest, fcf_3y, fcf_5y = fcf_by_year[latest], _avg([fcf_by_year[y] for y in last3]), _avg([fcf_by_year[y] for y in last5])
+    debt_latest, debt_3y, debt_5y = debt_by_year[debt_years[0]], _avg([debt_by_year[y] for y in debt_years[:3]]), _avg([debt_by_year[y] for y in debt_years[:5]])
+    roe_latest, roe_3y, roe_5y = roe_by_year[roe_years[0]], _avg([roe_by_year[y] for y in roe_years[:3]]), _avg([roe_by_year[y] for y in roe_years[:5]])
+    fcf_latest, fcf_3y, fcf_5y = fcf_by_year[fcf_years[0]], _avg([fcf_by_year[y] for y in fcf_years[:3]]), _avg([fcf_by_year[y] for y in fcf_years[:5]])
 
     checklist = [
         {"key": "debt_ratio_latest", "label": f"負債比率(近一年) < {DEBT_RATIO_MAX:.0f}%", "value": round(debt_latest, 2), "passed": debt_latest < DEBT_RATIO_MAX},
@@ -217,7 +264,7 @@ def screen_all(
         cheap_gates_passed = (
             symbol not in disposal_symbols
             and volume_lots is not None
-            and volume_lots > screening.DAILY_VOLUME_MIN_LOTS
+            and volume_lots > BUFFETT_DAILY_VOLUME_MIN_LOTS
         )
 
         if cheap_gates_passed:

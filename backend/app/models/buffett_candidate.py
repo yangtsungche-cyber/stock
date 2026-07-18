@@ -31,7 +31,8 @@ class BuffettCandidate(Base):
     roe_5y_avg_pct: Mapped[float] = mapped_column(Float, nullable=False)
     fcf_per_share_latest: Mapped[float] = mapped_column(Float, nullable=False)
     fcf_per_share_3y_avg: Mapped[float] = mapped_column(Float, nullable=False)
-    fcf_per_share_5y_avg: Mapped[float] = mapped_column(Float, nullable=False)
+    fcf_per_share_5y_avg: Mapped[float | None] = mapped_column(Float, nullable=True)
+    volume_lots: Mapped[float | None] = mapped_column(Float, nullable=True)
     screened_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
     )

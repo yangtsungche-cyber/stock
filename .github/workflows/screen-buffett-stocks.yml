@@ -1,0 +1,43 @@
+name: Buffett Stock Screener (Quarterly)
+
+# 巴菲特選股 9 項條件全部是「近1年/3年平均/5年平均」財報數字，不是天天變動的東西——
+# 財報只有在台股法定截止日（3/31 年報、5/15 Q1、8/14 Q2、11/14 Q3）之後才會更新，兩次
+# 截止日之間重跑等於白跑。這裡排在每個截止日後約一週觸發（台北時間 03:00，換算固定
+# 08 小時時差成 UTC 前一天 19:00，台灣無日光節約時間），讓 FinMind 有時間消化剛公布的
+# 財報。全市場批次耗時 2-3 小時，遠超過 Cloud Run 的請求逾時上限，所以不像
+# backfill-analysis-returns.yml/morning-briefing.yml 那樣呼叫既有 API，而是直接在
+# runner 上執行 `backend/scripts/screen_buffett_stocks.py`（跟手動在本機執行是同一支
+# 腳本），透過 secrets 直連 Neon／FinMind。
+#
+# --max-hours 5 是腳本自己的時間預算（到時間就把目前掃到的結果寫入，不會整批遺失）；
+# job 層級的 timeout-minutes 只是最後一道防線，避免 runner 卡住耗用免費額度。
+on:
+  schedule:
+    - cron: "0 19 6 4 *"   # 台北 4/7 03:00 — 對應年報（去年全年）
+    - cron: "0 19 21 5 *"  # 台北 5/22 03:00 — 對應 Q1 季報
+    - cron: "0 19 20 8 *"  # 台北 8/21 03:00 — 對應 Q2 季報
+    - cron: "0 19 20 11 *" # 台北 11/21 03:00 — 對應 Q3 季報
+  workflow_dispatch: {}
+
+jobs:
+  screen:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      FINMIND_TOKEN: ${{ secrets.FINMIND_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run Buffett stock screener
+        run: python scripts/screen_buffett_stocks.py --max-hours 5
