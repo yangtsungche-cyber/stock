@@ -6,7 +6,7 @@ WORKDIR /app
 # runtime, plus a CJK-capable font — without fonts-noto-cjk every Traditional Chinese
 # character in the generated PDF renders as an empty box.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libpango-1.0-0 libpangocairo-1.0-0 libcairo2 libgdk-pixbuf2.0-0 libffi-dev \
+    libpango-1.0-0 libpangocairo-1.0-0 libcairo2 libgdk-pixbuf-2.0-0 libffi-dev \
     shared-mime-info fonts-noto-cjk \
     && rm -rf /var/lib/apt/lists/*
 
