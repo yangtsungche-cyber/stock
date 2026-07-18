@@ -21,6 +21,7 @@ class QualityStockCandidate(Base):
     rank: Mapped[int] = mapped_column(Integer, nullable=False)
     name: Mapped[str] = mapped_column(String, nullable=False)
     market: Mapped[str] = mapped_column(String, nullable=False)
+    price: Mapped[float | None] = mapped_column(Float, nullable=True)
     fcf_return_latest_pct: Mapped[float] = mapped_column(Float, nullable=False)
     fcf_return_3y_avg_pct: Mapped[float] = mapped_column(Float, nullable=False)
     pb_ratio: Mapped[float] = mapped_column(Float, nullable=False)

@@ -76,27 +76,41 @@ def _load_disposal_symbols() -> set[str]:
         return set()  # transient failure — fail open (don't exclude anyone) rather than block the whole screen
 
 
-def _load_daily_volume_lots() -> dict[str, float]:
-    """今日全市場成交量（張），作為「日均成交量」篩選的當日快照近似值。"""
-    volume: dict[str, float] = {}
-    for url, code_field, vol_field in (
-        (TWSE_QUOTES_URL, "Code", "TradeVolume"),
-        (TPEX_QUOTES_URL, "SecuritiesCompanyCode", "TradingShares"),
+def _load_daily_quotes() -> dict[str, dict]:
+    """今日全市場成交量（張）+ 收盤價，來自同一批已經在抓的日成交量 bulk feed——
+    價格欄位原本就在同一筆回應裡（TWSE 的 ClosingPrice／TPEx 的 Close），只是先前沒取用；
+    現在一次抓、兩種用途都用，不必為了拿股價再多打一次這兩支 API。
+    """
+    quotes: dict[str, dict] = {}
+    for url, code_field, vol_field, price_field in (
+        (TWSE_QUOTES_URL, "Code", "TradeVolume", "ClosingPrice"),
+        (TPEX_QUOTES_URL, "SecuritiesCompanyCode", "TradingShares", "Close"),
     ):
         try:
             resp = requests.get(url, headers=_HEADERS, timeout=15)
             for row in resp.json():
                 code = row.get(code_field)
-                raw = row.get(vol_field)
-                if not code or raw is None:
+                raw_vol = row.get(vol_field)
+                if not code or raw_vol is None:
                     continue
                 try:
-                    volume[code] = float(str(raw).replace(",", "")) / 1000  # 股 -> 張
+                    volume_lots = float(str(raw_vol).replace(",", "")) / 1000  # 股 -> 張
                 except ValueError:
                     continue
+                price = None
+                try:
+                    price = float(str(row.get(price_field, "")).replace(",", ""))
+                except ValueError:
+                    pass
+                quotes[code] = {"volume_lots": volume_lots, "price": price}
         except (requests.RequestException, ValueError):
             continue
-    return volume
+    return quotes
+
+
+def _load_daily_volume_lots() -> dict[str, float]:
+    """今日全市場成交量（張），作為「日均成交量」篩選的當日快照近似值。"""
+    return {code: q["volume_lots"] for code, q in _load_daily_quotes().items()}
 
 
 def screen_all(

@@ -14,6 +14,7 @@ def _serialize(row: QualityStockCandidate) -> dict:
         "symbol": row.symbol,
         "name": row.name,
         "market": row.market,
+        "price": row.price,
         "fcf_return_latest_pct": row.fcf_return_latest_pct,
         "fcf_return_3y_avg_pct": row.fcf_return_3y_avg_pct,
         "pb_ratio": row.pb_ratio,

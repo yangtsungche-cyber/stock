@@ -206,7 +206,7 @@ def screen_all(
             universe = universe[:universe_limit]
 
     disposal_symbols = screening._load_disposal_symbols()
-    daily_volume = screening._load_daily_volume_lots()
+    daily_quotes = screening._load_daily_quotes()
 
     deadline = time.monotonic() + max_seconds if max_seconds is not None else None
 
@@ -220,7 +220,8 @@ def screen_all(
             break
 
         symbol = stock["symbol"]
-        volume_lots = daily_volume.get(symbol)
+        quote = daily_quotes.get(symbol)
+        volume_lots = quote["volume_lots"] if quote else None
         cheap_gates_passed = (
             symbol not in disposal_symbols
             and volume_lots is not None
@@ -256,7 +257,7 @@ def screen_all(
                 cache_hits += 1
 
             if result and result["has_data"] and not result["excluded"]:
-                survivors.append({**stock, **result})
+                survivors.append({**stock, **result, "price": quote["price"]})
             if not cache_hit:
                 time.sleep(SECONDS_PER_SYMBOL)  # only counts against the FinMind rate limit if we actually called it
 

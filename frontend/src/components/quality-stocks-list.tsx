@@ -20,6 +20,7 @@ type QualityStockRow = {
   symbol: string;
   name: string;
   market: string;
+  price: number | null;
   fcf_return_latest_pct: number;
   fcf_return_3y_avg_pct: number;
   pb_ratio: number;
@@ -141,6 +142,7 @@ export function QualityStocksList() {
                   <tr className="text-left">
                     <th className="py-1 pr-2 text-right">排名</th>
                     <th className="py-1 pr-2">股票</th>
+                    <th className="py-1 pr-2 text-right">現價</th>
                     <th className="py-1 pr-2 text-right">3年FCF報酬率均值</th>
                     <th className="py-1 pr-2 text-right">股價淨值比</th>
                     <th className="py-1 pr-2 text-right">本益比</th>
@@ -159,6 +161,9 @@ export function QualityStocksList() {
                         <Link href={`/analyze/${row.symbol}`} className="font-medium hover:underline">
                           {row.symbol} {row.name}
                         </Link>
+                      </td>
+                      <td className="py-1.5 pr-2 text-right tabular-nums">
+                        {row.price != null ? row.price.toFixed(2) : "—"}
                       </td>
                       <td className="py-1.5 pr-2 text-right">
                         <FcfCell pct={row.fcf_return_3y_avg_pct} />

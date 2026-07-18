@@ -74,6 +74,7 @@ async def _write_to_db(candidates: list[dict], fcf_cache: dict[str, dict]) -> No
                 rank=rank,
                 name=c["name"],
                 market=c["market"],
+                price=c["price"],
                 fcf_return_latest_pct=c["fcf_return_latest_pct"],
                 fcf_return_3y_avg_pct=c["fcf_return_3y_avg_pct"],
                 pb_ratio=c["pb_ratio"],
