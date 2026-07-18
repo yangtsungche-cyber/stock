@@ -23,6 +23,9 @@ export default function Home() {
         <Link href="/verification" className="text-sm text-muted-foreground hover:text-foreground">
           分析驗證中心 →
         </Link>
+        <Link href="/quality-stocks" className="text-sm text-muted-foreground hover:text-foreground">
+          財報狗績優股清單 →
+        </Link>
       </div>
       <MarketScanPanel />
       <OvernightSentimentPanel />
