@@ -162,6 +162,12 @@ export function PortfolioDashboard() {
     );
   }
 
+  const validHoldings = holdings.filter((h) => !h.error && h.market_value != null && h.unrealized_pl != null);
+  const totalMarketValue = validHoldings.reduce((sum, h) => sum + (h.market_value ?? 0), 0);
+  const totalUnrealizedPl = validHoldings.reduce((sum, h) => sum + (h.unrealized_pl ?? 0), 0);
+  const totalCostBasis = totalMarketValue - totalUnrealizedPl;
+  const totalUnrealizedPlPct = totalCostBasis !== 0 ? (totalUnrealizedPl / totalCostBasis) * 100 : null;
+
   async function confirmImport() {
     setImportStatus("importing");
     try {
@@ -302,7 +308,39 @@ export function PortfolioDashboard() {
             <p className="text-sm text-muted-foreground">尚無庫存資料，請先點上方「更新庫存」匯入。</p>
           )}
           {dashboardStatus === "done" && holdings.length > 0 && (
-            <div className="overflow-x-auto">
+            <>
+              <div className="mb-3 flex flex-wrap gap-6 text-sm">
+                <div>
+                  <span className="text-muted-foreground">總市值　</span>
+                  <span className="font-medium tabular-nums">
+                    {totalMarketValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">總損益　</span>
+                  <PlCell value={totalUnrealizedPl} />
+                </div>
+                <div>
+                  <span className="text-muted-foreground">總損益%　</span>
+                  {totalUnrealizedPlPct != null ? (
+                    <span
+                      className={`tabular-nums font-medium ${
+                        totalUnrealizedPlPct > 0
+                          ? "text-red-600"
+                          : totalUnrealizedPlPct < 0
+                            ? "text-emerald-600"
+                            : "text-muted-foreground"
+                      }`}
+                    >
+                      {totalUnrealizedPlPct > 0 ? "+" : ""}
+                      {totalUnrealizedPlPct.toFixed(2)}%
+                    </span>
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
+                  )}
+                </div>
+              </div>
+              <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="text-muted-foreground">
                   <tr className="text-left">
@@ -369,7 +407,8 @@ export function PortfolioDashboard() {
                   ))}
                 </tbody>
               </table>
-            </div>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>
