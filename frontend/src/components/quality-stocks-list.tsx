@@ -1,8 +1,17 @@
 "use client";
 
+import { Info } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -36,6 +45,37 @@ function FcfCell({ pct }: { pct: number }) {
       {pct > 0 ? "+" : ""}
       {pct.toFixed(2)}%
     </span>
+  );
+}
+
+function CombinedScoreExplainer() {
+  return (
+    <Dialog>
+      <DialogTrigger
+        render={<Button variant="ghost" size="icon-sm" className="ml-1 align-middle" />}
+      >
+        <Info className="size-3.5 text-muted-foreground" />
+        <span className="sr-only">綜合分數說明</span>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>綜合分數是什麼？</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-2 text-sm text-muted-foreground">
+          <p>
+            綜合分數 = 股價淨值比排名 + 本益比排名 + 股息殖利率排名（三項排名都只在「已經通過
+            自由現金流報酬率品質篩選」的候選股裡面比較，數字越小代表越好：股價淨值比/本益比排名
+            #1 = 最便宜、殖利率排名 #1 = 殖利率最高）。
+          </p>
+          <p className="font-medium text-foreground">
+            綜合分數越低，代表這檔股票同時具備「相對便宜」與「相對高殖利率」——也就是在體質已經
+            及格的這群股票裡，目前價格相對划算的程度。分數本身不代表獲利能力強弱，那已經由
+            「3年FCF報酬率均值」篩選過了；綜合分數只反映「現在買貴不貴」。
+          </p>
+          <p>排名由小到大排序，所以清單最上面就是目前相對最划算的標的。</p>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -105,7 +145,10 @@ export function QualityStocksList() {
                     <th className="py-1 pr-2 text-right">股價淨值比</th>
                     <th className="py-1 pr-2 text-right">本益比</th>
                     <th className="py-1 pr-2 text-right">殖利率</th>
-                    <th className="py-1 pr-2 text-right">綜合分數</th>
+                    <th className="py-1 pr-2 text-right">
+                      綜合分數
+                      <CombinedScoreExplainer />
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
