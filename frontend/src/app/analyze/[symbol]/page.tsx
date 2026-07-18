@@ -11,8 +11,13 @@ async function fetchCompanyInfo(symbol: string) {
     });
     if (!res.ok) return null;
     const data = await res.json();
-    if (typeof data.name !== "string" || (data.market !== "TWSE" && data.market !== "TPEx")) return null;
-    return { name: data.name as string, market: data.market as "TWSE" | "TPEx" };
+    if (
+      typeof data.name !== "string" ||
+      (data.market !== "TWSE" && data.market !== "TPEx" && data.market !== "興櫃")
+    ) {
+      return null;
+    }
+    return { name: data.name as string, market: data.market as "TWSE" | "TPEx" | "興櫃" };
   } catch {
     return null;
   }

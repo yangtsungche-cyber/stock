@@ -1,7 +1,7 @@
-"""Company/security name/market lookup, spanning TWSE (上市) + TPEx (上櫃).
+"""Company/security name/market lookup, spanning TWSE (上市) + TPEx (上櫃) + 興櫃 (emerging board).
 
-Two kinds of feed per exchange, both full-market snapshots fetched once per
-process and cached in-memory (same pattern as `twse.get_announcements`'s
+Three kinds of feed, all full-market snapshots fetched once per process and
+cached in-memory (same pattern as `twse.get_announcements`'s
 `_announcement_cache`):
 - The "company basic info" registries (t187ap03_L / mopsfin_t187ap03_O) only
   cover operating companies — ETFs, bond funds, etc. aren't companies and
@@ -9,6 +9,9 @@ process and cached in-memory (same pattern as `twse.get_announcements`'s
 - The daily-quotes feeds (STOCK_DAY_ALL / tpex_mainboard_quotes) cover every
   traded security on that exchange, so they fill in ETFs and anything else
   the company registry misses.
+- 興櫃's own real-time quotes feed (tpex_esb_latest_statistics) — 興櫃 has no
+  separate "company info" registry the way TWSE/TPEx do, so this is both the
+  universe and the name source for that market at once.
 """
 
 import requests
@@ -17,6 +20,7 @@ TWSE_INFO_URL = "https://openapi.twse.com.tw/v1/opendata/t187ap03_L"
 TPEX_INFO_URL = "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O"
 TWSE_QUOTES_URL = "https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL"
 TPEX_QUOTES_URL = "https://www.tpex.org.tw/openapi/v1/tpex_mainboard_quotes"
+ESB_QUOTES_URL = "https://www.tpex.org.tw/openapi/v1/tpex_esb_latest_statistics"
 
 _HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
 
@@ -44,6 +48,7 @@ def _load_companies() -> dict[str, dict]:
     _merge(companies, TPEX_INFO_URL, "SecuritiesCompanyCode", "CompanyAbbreviation", "TPEx")
     _merge(companies, TWSE_QUOTES_URL, "Code", "Name", "TWSE")
     _merge(companies, TPEX_QUOTES_URL, "SecuritiesCompanyCode", "CompanyName", "TPEx")
+    _merge(companies, ESB_QUOTES_URL, "SecuritiesCompanyCode", "CompanyName", "興櫃")
 
     if companies:
         _company_cache = companies
@@ -53,3 +58,19 @@ def _load_companies() -> dict[str, dict]:
 def get_company_info(symbol: str) -> dict | None:
     symbol = symbol.strip().upper()
     return _load_companies().get(symbol)
+
+
+def search_companies(query: str, limit: int = 10) -> list[dict]:
+    """代號前綴或名稱子字串比對，回傳 {symbol, name, market}——用於首頁/批次報表的即時搜尋建議。"""
+    q = query.strip()
+    if not q:
+        return []
+    q_upper = q.upper()
+
+    matches = [
+        {"symbol": symbol, "name": info["name"], "market": info["market"]}
+        for symbol, info in _load_companies().items()
+        if symbol.startswith(q_upper) or q in info["name"]
+    ]
+    matches.sort(key=lambda m: (not m["symbol"].startswith(q_upper), m["symbol"]))
+    return matches[:limit]

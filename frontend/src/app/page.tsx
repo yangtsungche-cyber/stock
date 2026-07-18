@@ -29,6 +29,9 @@ export default function Home() {
         <Link href="/portfolio" className="text-sm text-muted-foreground hover:text-foreground">
           持股庫存盤點 →
         </Link>
+        <Link href="/batch-report" className="text-sm text-muted-foreground hover:text-foreground">
+          批次分析報告 →
+        </Link>
       </div>
       <MarketScanPanel />
       <OvernightSentimentPanel />

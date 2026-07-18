@@ -1,6 +1,8 @@
 import asyncio
+from urllib.parse import quote
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Response
+from pydantic import BaseModel
 
 from app.services import (
     chips,
@@ -12,6 +14,7 @@ from app.services import (
     indicators,
     layers,
     playbook,
+    report,
     twse,
     waves,
 )
@@ -20,6 +23,18 @@ from app.services.yahoo import StockNotFoundError, get_price_dataframe, get_pric
 router = APIRouter(prefix="/stocks", tags=["stocks"])
 
 VALID_INTERVALS = {"1d", "1wk", "1mo"}
+BATCH_REPORT_MAX_SYMBOLS = 5
+
+
+class BatchReportRequest(BaseModel):
+    symbols: list[str]
+
+
+@router.get("/search")
+async def search_stocks(q: str = Query("", description="股票代號前綴或名稱關鍵字")) -> dict:
+    """即時搜尋建議，取代舊的 4 檔硬編碼假資料——查真實的 TWSE/TPEx/興櫃 全市場登記清單。"""
+    results = await asyncio.to_thread(company.search_companies, q)
+    return {"results": results}
 
 
 @router.get("/{symbol}/info")
@@ -251,3 +266,39 @@ async def get_fundamentals(symbol: str) -> dict:
 async def get_announcements(symbol: str) -> dict:
     announcements = await asyncio.to_thread(twse.get_announcements, symbol)
     return {"symbol": symbol.strip().upper(), "announcements": announcements}
+
+
+def _pdf_response(pdf_bytes: bytes, filename: str) -> Response:
+    # Chinese filenames aren't valid in the plain `filename=` parameter — use the RFC 5987
+    # `filename*=UTF-8''...` form (with an ASCII fallback) so this downloads with a readable
+    # name instead of browsers falling back to the URL's last path segment.
+    encoded = quote(filename)
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename=\"report.pdf\"; filename*=UTF-8''{encoded}"},
+    )
+
+
+@router.get("/{symbol}/report.pdf")
+async def get_report_pdf(symbol: str) -> Response:
+    """單一股票完整分析報告 PDF——避免重複查詢，也方便分享給他人或其他 AI 參考。"""
+    full = await report.analyze_full(symbol)
+    if full.get("error"):
+        raise HTTPException(status_code=404, detail=full["error"])
+    pdf_bytes = await asyncio.to_thread(report.render_pdf, [full])
+    return _pdf_response(pdf_bytes, f"{full['symbol']}_{full['name']}_分析報告.pdf")
+
+
+@router.post("/batch-report")
+async def post_batch_report(body: BatchReportRequest) -> Response:
+    """批次分析報告 PDF（最多 5 檔）——一次查完直接下載，不在網頁上呈現。"""
+    symbols = [s.strip().upper() for s in body.symbols if s.strip()]
+    if not symbols:
+        raise HTTPException(status_code=422, detail="請至少指定一檔股票代號")
+    if len(symbols) > BATCH_REPORT_MAX_SYMBOLS:
+        raise HTTPException(status_code=422, detail=f"一次最多查詢 {BATCH_REPORT_MAX_SYMBOLS} 檔股票")
+
+    reports = await asyncio.gather(*(report.analyze_full(s) for s in symbols))
+    pdf_bytes = await asyncio.to_thread(report.render_pdf, list(reports))
+    return _pdf_response(pdf_bytes, "批次分析報告.pdf")

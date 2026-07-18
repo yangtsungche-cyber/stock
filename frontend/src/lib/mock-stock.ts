@@ -1,7 +1,7 @@
 export type MockStock = {
   symbol: string;
   name: string;
-  market: "TWSE" | "TPEx";
+  market: "TWSE" | "TPEx" | "興櫃";
   price: number;
   change: number;
   changePercent: number;
@@ -14,6 +14,10 @@ const MOCK_STOCKS: Record<string, MockStock> = {
   "2454": { symbol: "2454", name: "聯發科", market: "TWSE", price: 1305, change: -10, changePercent: -0.76 },
 };
 
+// Fallback shown only until the real /stocks/{symbol}/info + /prices lookups (see
+// analyze/[symbol]/page.tsx) resolve or fail — not a search source (see company.search_companies
+// on the backend / GET /stocks/search for real search, replacing the old hardcoded list this
+// module used to also provide).
 export function getMockStock(symbol: string): MockStock {
   const key = symbol.trim().toUpperCase();
   return (
@@ -25,13 +29,5 @@ export function getMockStock(symbol: string): MockStock {
       change: 0,
       changePercent: 0,
     }
-  );
-}
-
-export function searchMockStocks(query: string): MockStock[] {
-  const q = query.trim().toUpperCase();
-  if (!q) return Object.values(MOCK_STOCKS);
-  return Object.values(MOCK_STOCKS).filter(
-    (s) => s.symbol.includes(q) || s.name.includes(query.trim()),
   );
 }
