@@ -10,6 +10,34 @@ import { SUGGESTION_BADGE, type Suggestion } from "@/lib/suggestion-badge";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
+// The dashboard takes minutes to compute (a live technical+fundamental pass over every holding),
+// so re-running it every time this page remounts — e.g. navigating to a stock's detail page and
+// back — would be wasteful. Cache the last result in sessionStorage; only "重新整理" (or the very
+// first visit this session) triggers a real recompute.
+const CACHE_KEY = "portfolio-dashboard-cache";
+
+type CachedDashboard = { holdings: Holding[]; cachedAt: string };
+
+function readCache(): CachedDashboard | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.sessionStorage.getItem(CACHE_KEY);
+    return raw ? (JSON.parse(raw) as CachedDashboard) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeCache(holdings: Holding[]): string {
+  const cachedAt = new Date().toISOString();
+  try {
+    window.sessionStorage.setItem(CACHE_KEY, JSON.stringify({ holdings, cachedAt }));
+  } catch {
+    // sessionStorage unavailable — just skip caching, next mount will recompute
+  }
+  return cachedAt;
+}
+
 type PreviewRow = {
   symbol: string;
   name: string;
@@ -72,6 +100,7 @@ export function PortfolioDashboard() {
   const [dashboardStatus, setDashboardStatus] = useState<"loading" | "done" | "error">("loading");
   const [holdings, setHoldings] = useState<Holding[]>([]);
   const [dashboardError, setDashboardError] = useState<string | null>(null);
+  const [cachedAt, setCachedAt] = useState<string | null>(null);
 
   async function fetchDashboard() {
     setDashboardStatus("loading");
@@ -84,6 +113,7 @@ export function PortfolioDashboard() {
       }
       const body: { holdings: Holding[] } = await res.json();
       setHoldings(body.holdings);
+      setCachedAt(writeCache(body.holdings));
       setDashboardStatus("done");
     } catch (err) {
       setDashboardError(err instanceof Error ? err.message : String(err));
@@ -92,7 +122,14 @@ export function PortfolioDashboard() {
   }
 
   useEffect(() => {
-    fetchDashboard();
+    const cached = readCache();
+    if (cached) {
+      setHoldings(cached.holdings);
+      setCachedAt(cached.cachedAt);
+      setDashboardStatus("done");
+    } else {
+      fetchDashboard();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -243,9 +280,16 @@ export function PortfolioDashboard() {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="text-base">持股盤點與建議</CardTitle>
-          <Button onClick={fetchDashboard} disabled={dashboardStatus === "loading"} variant="secondary">
-            {dashboardStatus === "loading" ? "計算中…" : "重新整理"}
-          </Button>
+          <div className="flex items-center gap-2">
+            {cachedAt && dashboardStatus === "done" && (
+              <span className="text-xs text-muted-foreground">
+                上次更新：{new Date(cachedAt).toLocaleTimeString()}
+              </span>
+            )}
+            <Button onClick={fetchDashboard} disabled={dashboardStatus === "loading"} variant="secondary">
+              {dashboardStatus === "loading" ? "計算中…" : "重新整理"}
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           {dashboardStatus === "loading" && (
