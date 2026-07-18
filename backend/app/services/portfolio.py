@@ -17,7 +17,7 @@ emerald=bearish/減碼 — NOT a new color convention).
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import QualityStockCandidate, UserPortfolio
+from app.models import BuffettCandidate, QualityStockCandidate, UserPortfolio
 from app.services import combined, company, scan
 
 SUGGESTION_LABELS = {"add": "加碼", "hold": "續抱", "watch": "觀察", "trim": "減碼"}
@@ -48,6 +48,17 @@ def _derive_suggestion(technical_direction: str, fundamental_tier: str | None) -
     else:
         suggestion = SUGGESTION_MAP[(technical_direction, fundamental_tier)]
     return suggestion, SUGGESTION_LABELS[suggestion]
+
+
+def _quality_badge(in_quality: bool, in_buffett: bool) -> str | None:
+    """財報狗清單欄位標記：同時符合兩份清單顯示「績巴」，只符合其一分別顯示「績優」／「巴特」。"""
+    if in_quality and in_buffett:
+        return "績巴"
+    if in_quality:
+        return "績優"
+    if in_buffett:
+        return "巴特"
+    return None
 
 
 def parse_paste(text: str) -> dict:
@@ -109,6 +120,8 @@ async def build_dashboard(db: AsyncSession, portfolio_rows: list[UserPortfolio])
 
     quality_result = await db.execute(select(QualityStockCandidate.symbol))
     quality_symbols = set(quality_result.scalars().all())
+    buffett_result = await db.execute(select(BuffettCandidate.symbol))
+    buffett_symbols = set(buffett_result.scalars().all())
 
     dashboard: list[dict] = []
     for row in portfolio_rows:
@@ -118,7 +131,7 @@ async def build_dashboard(db: AsyncSession, portfolio_rows: list[UserPortfolio])
             "market": row.market,
             "shares": row.shares,
             "cost_basis": row.cost_basis,
-            "in_quality_list": row.symbol in quality_symbols,
+            "quality_badge": _quality_badge(row.symbol in quality_symbols, row.symbol in buffett_symbols),
         }
 
         scan_result = results_by_symbol.get(row.symbol)

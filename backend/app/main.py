@@ -4,6 +4,7 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.v1.buffett_stocks import router as buffett_stocks_router
 from app.api.v1.health import router as health_router
 from app.api.v1.morning_briefing import router as morning_briefing_router
 from app.api.v1.overnight_sentiment import router as overnight_sentiment_router
@@ -35,6 +36,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(buffett_stocks_router, prefix="/api/v1")
 app.include_router(health_router, prefix="/api/v1")
 app.include_router(morning_briefing_router, prefix="/api/v1")
 app.include_router(overnight_sentiment_router, prefix="/api/v1")

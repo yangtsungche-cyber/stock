@@ -32,6 +32,9 @@ export default function Home() {
         <Link href="/batch-report" className="text-sm text-muted-foreground hover:text-foreground">
           批次分析報告 →
         </Link>
+        <Link href="/buffett-stocks" className="text-sm text-muted-foreground hover:text-foreground">
+          巴菲特選股清單 →
+        </Link>
       </div>
       <MarketScanPanel />
       <OvernightSentimentPanel />

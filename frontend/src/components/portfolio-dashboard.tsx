@@ -52,7 +52,7 @@ type Holding = {
   market: string;
   shares: number;
   cost_basis: number;
-  in_quality_list: boolean;
+  quality_badge: "績優" | "績巴" | "巴特" | null;
   error?: string;
   close?: number;
   market_value?: number;
@@ -66,6 +66,14 @@ type Holding = {
   combined_label?: string;
   suggestion?: Suggestion;
   suggestion_label?: string;
+};
+
+// List-membership tags, not a bullish/bearish directional signal — deliberately does not reuse
+// the red=bullish/emerald=bearish convention (would be misleading for a membership tag).
+const QUALITY_BADGE_COLOR: Record<"績優" | "績巴" | "巴特", string> = {
+  績巴: "bg-red-600 text-white",
+  績優: "bg-amber-500 text-white",
+  巴特: "bg-blue-600 text-white",
 };
 
 function PlCell({ value }: { value: number }) {
@@ -392,7 +400,11 @@ export function PortfolioDashboard() {
                             {h.fundamental_rating != null ? `${h.fundamental_rating.toFixed(1)}` : "—"}
                           </td>
                           <td className="py-1.5 pr-2 text-center">
-                            {h.in_quality_list ? <Badge className="bg-red-600 text-white">在內</Badge> : <span className="text-muted-foreground">—</span>}
+                            {h.quality_badge ? (
+                              <Badge className={QUALITY_BADGE_COLOR[h.quality_badge]}>{h.quality_badge}</Badge>
+                            ) : (
+                              <span className="text-muted-foreground">—</span>
+                            )}
                           </td>
                           <td className="py-1.5 pr-2">
                             {h.suggestion ? (
