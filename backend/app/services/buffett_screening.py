@@ -120,7 +120,11 @@ def _roe_by_year(bs_by_date: dict[str, dict[str, float]], fs_by_date: dict[str, 
     return result
 
 
-def _fcf_per_share_by_year(bs_by_date: dict[str, dict[str, float]], cf_by_date: dict[str, dict[str, float]]) -> dict[int, float]:
+def _fcf_per_share_by_year(
+    bs_by_date: dict[str, dict[str, float]],
+    cf_by_date: dict[str, dict[str, float]],
+    fs_by_date: dict[str, dict[str, float]],
+) -> dict[int, float]:
     """每股自由現金流 = (營業現金流 + 資本支出) / 股數，讀每個會計年度 12/31 那筆資料.
 
     FinMind's `TaiwanStockCashFlowsStatement` reports cash-flow figures as **cumulative
@@ -136,6 +140,15 @@ def _fcf_per_share_by_year(bs_by_date: dict[str, dict[str, float]], cf_by_date: 
     be present, which silently dropped years for asset-light companies whose capex postings
     are omitted (not zeroed) in immaterial quarters — the 12/31 row is reported even when the
     year's capex is 0, so this now correctly includes those years too.
+
+    Shares are derived from that quarter's own `IncomeAfterTaxes / EPS` (the weighted-average
+    share count the company itself used for that quarter's EPS), not `CapitalStock / PAR_VALUE`.
+    A real 財報狗-passing company (4763 材料*-KY) changed its par value from NT$10 to NT$1 in
+    2025 (a 10-for-1 split via par-value change, per its own financial-statement notes) —
+    `CapitalStock / 10` silently undercounted its post-split share count by 10x, inflating
+    FCF-per-share 10x for that year alone. EPS-derived shares self-correct for any such
+    par-value change since EPS is always stated per real share regardless of par value;
+    falls back to `CapitalStock / PAR_VALUE` only when net income or EPS isn't available.
     """
     result: dict[int, float] = {}
     for d, fields in cf_by_date.items():
@@ -146,10 +159,15 @@ def _fcf_per_share_by_year(bs_by_date: dict[str, dict[str, float]], cf_by_date: 
         if ocf is None or capex is None:
             continue
         year = int(d[:4])
-        capital_stock = bs_by_date.get(d, {}).get("CapitalStock")
-        if not capital_stock:
-            continue
-        shares = capital_stock / PAR_VALUE
+        fs_fields = fs_by_date.get(d, {})
+        net_income, eps = fs_fields.get("IncomeAfterTaxes"), fs_fields.get("EPS")
+        if net_income and eps:
+            shares = net_income / eps
+        else:
+            capital_stock = bs_by_date.get(d, {}).get("CapitalStock")
+            if not capital_stock:
+                continue
+            shares = capital_stock / PAR_VALUE
         result[year] = (ocf + capex) / shares
     return result
 
@@ -165,7 +183,7 @@ def _fetch_metrics(symbol: str) -> dict[str, dict[int, float]]:
     return {
         "debt_ratio_by_year": _debt_ratio_by_year(bs_by_date),
         "roe_by_year": _roe_by_year(bs_by_date, fs_by_date),
-        "fcf_per_share_by_year": _fcf_per_share_by_year(bs_by_date, cf_by_date),
+        "fcf_per_share_by_year": _fcf_per_share_by_year(bs_by_date, cf_by_date, fs_by_date),
     }
 
 
