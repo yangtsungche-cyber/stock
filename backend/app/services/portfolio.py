@@ -14,11 +14,87 @@ bullish/neutral/bearish × strong/moderate/weak buckets onto the same 4-tier sch
 emerald=bearish/減碼 — NOT a new color convention).
 """
 
+from datetime import date, datetime, timedelta, timezone
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import BuffettCandidate, QualityStockCandidate, UserPortfolio
-from app.services import combined, company, fundamentals, scan, screening
+from app.services import combined, company, finmind, fundamentals, scan, screening
+
+# 賣出成本估算：手續費用「牌告未折」費率, 證交稅依商品類型（一般股票 0.3%、股票型 ETF
+# 0.1%、債券型 ETF 免稅——這是稅法規定, 不是券商給的折扣）。實際手續費視券商折扣（常見
+# 6折甚至更低）而定, 這裡只能用公版費率估, 跟使用者實際扣款會有落差, 屬已知近似值，
+# 目的是「抓量級」（可以合理估獲利), 不是要精確重現特定券商的對帳單金額。
+COMMISSION_RATE = 0.001425  # 手續費 0.1425%（未折）
+STOCK_TAX_RATE = 0.003  # 一般股票證交稅 0.3%
+ETF_TAX_RATE = 0.001  # 股票型 ETF 證交稅 0.1%
+BOND_ETF_TAX_RATE = 0.0  # 債券型 ETF 免徵證交稅
+
+
+def _sell_side_tax_rate(symbol: str) -> float:
+    """台股 ETF 代號慣例：「00」開頭為 ETF, 字尾為英文字母（如 00720B 的 B）多半代表
+    債券型基金——這是代號命名慣例的近似判斷, 不是完整的商品類型資料庫查詢。
+    """
+    if not symbol.startswith("00"):
+        return STOCK_TAX_RATE
+    if symbol and symbol[-1].isalpha() and symbol[-1].upper() == "B":
+        return BOND_ETF_TAX_RATE
+    return ETF_TAX_RATE
+
+
+def estimate_net_proceeds(market_value: float, symbol: str) -> float:
+    """預估變現淨額 = 市值 - 預估賣出手續費 - 預估證交稅（今天全部賣出、扣掉交易成本後
+    實際入帳的估計金額）, 對應一般券商 App「帳面收入」欄位的概念。
+    """
+    tax_rate = _sell_side_tax_rate(symbol)
+    commission = market_value * COMMISSION_RATE
+    tax = market_value * tax_rate
+    return round(market_value - commission - tax, 2)
+
+
+_yield_estimate_cache: dict[str, float | None] = {}
+
+
+def _estimate_yield_from_distributions(symbol: str, price: float) -> float | None:
+    """殖利率的 fallback 來源：ETF/債券型基金不在 `fundamentals._load_valuation()` 的
+    TWSE/TPEx 本益比/殖利率 bulk 快照裡（那份資料本質是「個股」的本益比/股價淨值比，ETF
+    沒有「本益比」這種概念），但 FinMind 的 `TaiwanStockDividend` 有記錄 ETF 實際配息
+    （`CashEarningsDistribution`, 除息日 `CashExDividendTradingDate`）——用近 12 個月
+    已經除息（不含尚未除息的預告）的配息總和 / 現價，換算成估計殖利率，比直接拿「去年
+    同期」的殖利率數字更準（配息型 ETF 常常配息頻率/金額本身就會變動)。
+
+    只在 symbol 沒有 bulk 快照資料時才會呼叫（portfolio 持股檔數少，才適合逐檔呼叫
+    FinMind；全市場篩選不會用這個 fallback)。同一次請求內用簡單 dict 快取, 避免同一檔
+    在 summary + dashboard 兩個端點都被呼叫時重複打 FinMind。
+    """
+    if symbol in _yield_estimate_cache:
+        return _yield_estimate_cache[symbol]
+
+    result: float | None = None
+    try:
+        rows = finmind.get_dividend(symbol)
+        today = datetime.now(timezone.utc).date()
+        cutoff = today - timedelta(days=365)
+        total = 0.0
+        for row in rows:
+            ex_date_str = row.get("CashExDividendTradingDate")
+            cash = row.get("CashEarningsDistribution") or 0.0
+            if not ex_date_str or cash <= 0:
+                continue
+            try:
+                ex_date = date.fromisoformat(ex_date_str)
+            except ValueError:
+                continue
+            if cutoff <= ex_date <= today:
+                total += cash
+        if total > 0 and price:
+            result = round(total / price * 100, 2)
+    except Exception:
+        result = None
+
+    _yield_estimate_cache[symbol] = result
+    return result
 
 SUGGESTION_LABELS = {"add": "加碼", "hold": "續抱", "watch": "觀察", "trim": "減碼"}
 
@@ -153,10 +229,17 @@ async def build_dashboard(db: AsyncSession, portfolio_rows: list[UserPortfolio])
         unrealized_pl = round(market_value - cost_total, 2)
         unrealized_pl_pct = round(unrealized_pl / cost_total * 100, 2) if cost_total else None
 
+        estimated_net_proceeds = estimate_net_proceeds(market_value, row.symbol)
+        estimated_net_pl = round(estimated_net_proceeds - cost_total, 2)
+
         # 殖利率來自跟財報狗績優股清單/巴菲特選股清單同一個來源（TWSE/TPEx 當日估值快照，
         # 免額外呼叫 FinMind）。預估股利 = 現價 * 殖利率——用「現在買、領到跟現在殖利率一樣的
         # 股利」這個近似值反推，不是查詢個股實際配息公告，兩者可能有落差，屬已知近似。
+        # ETF/債券型基金不在這份快照裡（沒有本益比/股價淨值比的概念），改用 FinMind 實際配息
+        # 記錄反推近12個月殖利率。
         dividend_yield_pct = (valuation.get(row.symbol) or {}).get("dividend_yield")
+        if dividend_yield_pct is None:
+            dividend_yield_pct = _estimate_yield_from_distributions(row.symbol, close)
         estimated_dividend_per_share = round(close * dividend_yield_pct / 100, 4) if dividend_yield_pct is not None else None
         estimated_dividend_total = (
             round(row.shares * estimated_dividend_per_share, 2) if estimated_dividend_per_share is not None else None
@@ -172,6 +255,8 @@ async def build_dashboard(db: AsyncSession, portfolio_rows: list[UserPortfolio])
             "market_value": market_value,
             "unrealized_pl": unrealized_pl,
             "unrealized_pl_pct": unrealized_pl_pct,
+            "estimated_net_proceeds": estimated_net_proceeds,
+            "estimated_net_pl": estimated_net_pl,
             "dividend_yield_pct": dividend_yield_pct,
             "estimated_dividend_per_share": estimated_dividend_per_share,
             "estimated_dividend_total": estimated_dividend_total,
@@ -214,7 +299,10 @@ def build_summary(portfolio_rows: list[UserPortfolio]) -> dict:
             market_value = round(row.shares * close, 2)
             cost_total = row.shares * row.cost_basis
             unrealized_pl = round(market_value - cost_total, 2)
+            estimated_net_proceeds = estimate_net_proceeds(market_value, row.symbol)
             dividend_yield_pct = (valuation.get(row.symbol) or {}).get("dividend_yield")
+            if dividend_yield_pct is None:
+                dividend_yield_pct = _estimate_yield_from_distributions(row.symbol, close)
             estimated_dividend_total = (
                 round(market_value * dividend_yield_pct / 100, 2) if dividend_yield_pct is not None else 0.0
             )
@@ -222,6 +310,7 @@ def build_summary(portfolio_rows: list[UserPortfolio]) -> dict:
                 "market_value": market_value,
                 "cost_total": cost_total,
                 "unrealized_pl": unrealized_pl,
+                "estimated_net_proceeds": estimated_net_proceeds,
                 "estimated_dividend_total": estimated_dividend_total,
             })
         by_owner.setdefault(row.owner, []).append(entry)
@@ -231,12 +320,16 @@ def build_summary(portfolio_rows: list[UserPortfolio]) -> dict:
         market_value = sum(e["market_value"] for e in valid)
         cost_total = sum(e["cost_total"] for e in valid)
         unrealized_pl = sum(e["unrealized_pl"] for e in valid)
+        estimated_net_proceeds = sum(e["estimated_net_proceeds"] for e in valid)
         estimated_dividend_total = sum(e["estimated_dividend_total"] for e in valid)
         unrealized_pl_pct = round(unrealized_pl / cost_total * 100, 2) if cost_total else None
+        estimated_net_pl = round(estimated_net_proceeds - cost_total, 2)
         return {
             "market_value": round(market_value, 2),
             "unrealized_pl": round(unrealized_pl, 2),
             "unrealized_pl_pct": unrealized_pl_pct,
+            "estimated_net_proceeds": round(estimated_net_proceeds, 2),
+            "estimated_net_pl": estimated_net_pl,
             "estimated_dividend_total": round(estimated_dividend_total, 2),
             "holding_count": len(entries),
             "error_count": len(entries) - len(valid),

@@ -111,7 +111,12 @@ export function PortfolioValueChart() {
 
     let primarySeries: ISeriesApi<"Line"> | null = null;
     for (const cfg of SERIES_CONFIG) {
-      const series = chart.addSeries(LineSeries, { color: cfg.color, title: cfg.label, lineWidth: 2 });
+      const series = chart.addSeries(LineSeries, {
+        color: cfg.color,
+        title: cfg.label,
+        lineWidth: 2,
+        priceFormat: { type: "price", precision: 0, minMove: 1 },
+      });
       series.setData(toSeriesData(points, cfg.key));
       if (cfg.key === "我+太太") primarySeries = series;
     }

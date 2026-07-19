@@ -53,6 +53,8 @@ type OwnerSummary = {
   unrealized_pl: number;
   unrealized_pl_pct: number | null;
   estimated_dividend_total: number;
+  estimated_net_proceeds: number;
+  estimated_net_pl: number;
   holding_count: number;
   error_count: number;
 };
@@ -80,6 +82,8 @@ type Holding = {
   unrealized_pl?: number;
   unrealized_pl_pct?: number | null;
   weight_pct?: number | null;
+  estimated_net_proceeds?: number;
+  estimated_net_pl?: number;
   dividend_yield_pct?: number | null;
   estimated_dividend_per_share?: number | null;
   estimated_dividend_total?: number | null;
@@ -138,6 +142,10 @@ function getHoldingSortValue(h: Holding, key: string): string | number | null | 
       return h.unrealized_pl;
     case "unrealized_pl_pct":
       return h.unrealized_pl_pct;
+    case "estimated_net_proceeds":
+      return h.estimated_net_proceeds;
+    case "estimated_net_pl":
+      return h.estimated_net_pl;
     case "dividend_yield_pct":
       return h.dividend_yield_pct;
     case "estimated_dividend_total":
@@ -270,6 +278,7 @@ export function PortfolioDashboard() {
   const totalCostBasis = totalMarketValue - totalUnrealizedPl;
   const totalUnrealizedPlPct = totalCostBasis !== 0 ? (totalUnrealizedPl / totalCostBasis) * 100 : null;
   const totalEstimatedDividend = validHoldings.reduce((sum, h) => sum + (h.estimated_dividend_total ?? 0), 0);
+  const totalEstimatedNetPl = validHoldings.reduce((sum, h) => sum + (h.estimated_net_pl ?? 0), 0);
 
   async function confirmImport() {
     setImportStatus("importing");
@@ -319,6 +328,7 @@ export function PortfolioDashboard() {
                     <th className="py-1 pr-2 text-right">市值</th>
                     <th className="py-1 pr-2 text-right">損益</th>
                     <th className="py-1 pr-2 text-right">損益%</th>
+                    <th className="py-1 pr-2 text-right">預估變現損益</th>
                     <th className="py-1 pr-2 text-right">預估股利</th>
                   </tr>
                 </thead>
@@ -345,12 +355,15 @@ export function PortfolioDashboard() {
                             <td className="py-1.5 pr-2 text-right tabular-nums">
                               {s.unrealized_pl_pct != null ? `${s.unrealized_pl_pct > 0 ? "+" : ""}${s.unrealized_pl_pct}%` : "—"}
                             </td>
+                            <td className="py-1.5 pr-2 text-right">
+                              <PlCell value={s.estimated_net_pl} />
+                            </td>
                             <td className="py-1.5 pr-2 text-right tabular-nums">
                               {s.estimated_dividend_total.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                             </td>
                           </>
                         ) : (
-                          <td className="py-1.5 pr-2 text-muted-foreground" colSpan={4}>
+                          <td className="py-1.5 pr-2 text-muted-foreground" colSpan={5}>
                             尚無庫存資料
                           </td>
                         )}
@@ -370,12 +383,19 @@ export function PortfolioDashboard() {
                         ? `${summary.total.unrealized_pl_pct > 0 ? "+" : ""}${summary.total.unrealized_pl_pct}%`
                         : "—"}
                     </td>
+                    <td className="py-1.5 pr-2 text-right">
+                      <PlCell value={summary.total.estimated_net_pl} />
+                    </td>
                     <td className="py-1.5 pr-2 text-right tabular-nums">
                       {summary.total.estimated_dividend_total.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                     </td>
                   </tr>
                 </tbody>
               </table>
+              <p className="mt-2 text-xs text-muted-foreground">
+                預估變現損益＝市值扣掉估計的賣出手續費與證交稅後，再減成本——用公版費率估算（手續費
+                0.1425%，股票證交稅 0.3%／ETF 0.1%／債券型 ETF 免稅），跟您實際的券商折扣費率會有小幅落差。
+              </p>
             </div>
           )}
         </CardContent>
@@ -544,6 +564,10 @@ export function PortfolioDashboard() {
                   )}
                 </div>
                 <div>
+                  <span className="text-muted-foreground">預估變現損益　</span>
+                  <PlCell value={totalEstimatedNetPl} />
+                </div>
+                <div>
                   <span className="text-muted-foreground">預估總股利　</span>
                   <span className="font-medium tabular-nums">
                     {totalEstimatedDividend.toLocaleString(undefined, { maximumFractionDigits: 0 })}
@@ -562,6 +586,7 @@ export function PortfolioDashboard() {
                     <SortableTh sortKey="weight_pct" label="權重%" activeKey={sortKey} dir={sortDir} onSort={requestSort} />
                     <SortableTh sortKey="unrealized_pl" label="損益" activeKey={sortKey} dir={sortDir} onSort={requestSort} />
                     <SortableTh sortKey="unrealized_pl_pct" label="損益%" activeKey={sortKey} dir={sortDir} onSort={requestSort} />
+                    <SortableTh sortKey="estimated_net_pl" label="預估變現損益" activeKey={sortKey} dir={sortDir} onSort={requestSort} />
                     <SortableTh sortKey="dividend_yield_pct" label="殖利率" activeKey={sortKey} dir={sortDir} onSort={requestSort} />
                     <SortableTh sortKey="estimated_dividend_total" label="預估股利" activeKey={sortKey} dir={sortDir} onSort={requestSort} />
                     <SortableTh sortKey="technical_score" label="技術分數" activeKey={sortKey} dir={sortDir} onSort={requestSort} />
@@ -581,7 +606,7 @@ export function PortfolioDashboard() {
                       <td className="py-1.5 pr-2 text-right tabular-nums">{h.shares.toLocaleString()}</td>
                       <td className="py-1.5 pr-2 text-right tabular-nums">{h.cost_basis.toFixed(2)}</td>
                       {h.error ? (
-                        <td className="py-1.5 pr-2 text-muted-foreground" colSpan={11}>
+                        <td className="py-1.5 pr-2 text-muted-foreground" colSpan={12}>
                           無法取得資料：{h.error}
                         </td>
                       ) : (
@@ -596,6 +621,9 @@ export function PortfolioDashboard() {
                           </td>
                           <td className="py-1.5 pr-2 text-right tabular-nums">
                             {h.unrealized_pl_pct != null ? `${h.unrealized_pl_pct > 0 ? "+" : ""}${h.unrealized_pl_pct}%` : "—"}
+                          </td>
+                          <td className="py-1.5 pr-2 text-right">
+                            {h.estimated_net_pl != null ? <PlCell value={h.estimated_net_pl} /> : "—"}
                           </td>
                           <td className="py-1.5 pr-2 text-right tabular-nums">
                             {h.dividend_yield_pct != null ? `${h.dividend_yield_pct.toFixed(2)}%` : "—"}
