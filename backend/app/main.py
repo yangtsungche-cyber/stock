@@ -30,13 +30,6 @@ settings = get_settings()
 
 app = FastAPI(title=settings.app_name)
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.cors_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 @app.middleware("http")
 async def require_api_key(request: Request, call_next):
@@ -56,6 +49,18 @@ async def require_api_key(request: Request, call_next):
         return JSONResponse({"detail": "Unauthorized"}, status_code=401)
 
     return await call_next(request)
+
+
+# 必須加在 require_api_key 之後（Starlette 的 middleware stack 是後加的在外層）——
+# 讓 CORS 包在 API key 檢查外面，這樣 401 拒絕回應也會帶到 CORS header，瀏覽器
+# 才不會把它誤判成 CORS 錯誤（會直接顯示成 fetch 失敗，而不是看得到的 401）。
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 app.include_router(buffett_stocks_router, prefix="/api/v1")
