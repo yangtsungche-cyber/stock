@@ -16,6 +16,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Jerry AI Stock Analyst Pro",
   description: "AI Technical Analysis Decision Engine",
+  robots: { index: false, follow: false, nocache: true },
 };
 
 export default function RootLayout({
