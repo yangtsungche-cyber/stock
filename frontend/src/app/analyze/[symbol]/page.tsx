@@ -3,11 +3,17 @@ import { StockHeader } from "@/components/stock-header";
 import { getMockStock } from "@/lib/mock-stock";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+// 這支 page.tsx 是 Server Component，fetch 在 Vercel 的伺服器端執行，不會經過
+// frontend/src/lib/api-key-fetch-patch.tsx（那支只 monkey-patch 瀏覽器的 window.fetch）。
+// 所以這裡要自己手動帶 X-API-Key，否則後端的 require_api_key 一律 401。
+const API_KEY = process.env.NEXT_PUBLIC_BACKEND_API_KEY;
+const BACKEND_HEADERS: HeadersInit | undefined = API_KEY ? { "X-API-Key": API_KEY } : undefined;
 
 async function fetchCompanyInfo(symbol: string) {
   try {
     const res = await fetch(`${API_URL}/api/v1/stocks/${encodeURIComponent(symbol)}/info`, {
       cache: "no-store",
+      headers: BACKEND_HEADERS,
     });
     if (!res.ok) return null;
     const data = await res.json();
@@ -27,7 +33,7 @@ async function fetchLatestQuote(symbol: string) {
   try {
     const res = await fetch(
       `${API_URL}/api/v1/stocks/${encodeURIComponent(symbol)}/prices?interval=1d&period=5d`,
-      { cache: "no-store" },
+      { cache: "no-store", headers: BACKEND_HEADERS },
     );
     if (!res.ok) return null;
     const data = await res.json();

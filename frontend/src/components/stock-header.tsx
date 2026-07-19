@@ -1,3 +1,6 @@
+"use client";
+
+import { useState } from "react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -18,8 +21,31 @@ export function StockHeader({
   stock: MockStock;
   quoteUnavailable?: boolean;
 }) {
+  const [downloading, setDownloading] = useState(false);
   const isUp = stock.change > 0;
   const isDown = stock.change < 0;
+
+  async function downloadReport() {
+    // 用 fetch 而非 <a href> 直接連到後端——後端現在要求 X-API-Key，plain 的瀏覽器
+    // 導覽沒辦法帶自訂 header，只有 fetch（會被 api-key-fetch-patch.tsx 自動加上
+    // 這把 key）才能通過閘門，所以下載一律先 fetch 回 blob 再觸發存檔。
+    setDownloading(true);
+    try {
+      const res = await fetch(
+        `${API_URL}/api/v1/stocks/${encodeURIComponent(stock.symbol)}/report.pdf`,
+      );
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${stock.symbol}_分析報告.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } finally {
+      setDownloading(false);
+    }
+  }
 
   return (
     <div className="flex flex-wrap items-end justify-between gap-4 border-b pb-4">
@@ -35,11 +61,9 @@ export function StockHeader({
       </div>
 
       <div className="flex flex-col items-end gap-2 text-right">
-        <a href={`${API_URL}/api/v1/stocks/${encodeURIComponent(stock.symbol)}/report.pdf`}>
-          <Button variant="outline" size="sm">
-            下載 PDF 報告
-          </Button>
-        </a>
+        <Button variant="outline" size="sm" onClick={downloadReport} disabled={downloading}>
+          {downloading ? "下載中…" : "下載 PDF 報告"}
+        </Button>
         {quoteUnavailable ? (
           <div className="text-sm text-muted-foreground">無法取得即時報價</div>
         ) : (
