@@ -33,6 +33,23 @@ DEBT_RATIO_MAX = 50.0  # percent
 CURRENT_RATIO_MIN = 120.0  # percent
 DIVIDEND_YIELD_MIN = 3.0  # percent
 
+# V3.2：基本面三模組加權重構——checklist 8 項不再攤平算通過比例，改成先分進
+# 成長性(Growth)/獲利能力(Profitability)/財務安全(Safety) 三桶，各桶內仍是「通過項數/
+# 該桶項數」的布林計數（不改成連續分數，維持改動幅度最小），再依權重加總。
+GROWTH_KEYS = {"eps_growth", "revenue_cagr"}
+PROFITABILITY_KEYS = {"roe", "gross_margin_trend"}
+SAFETY_KEYS = {"debt_ratio", "free_cash_flow", "current_ratio", "dividend_yield"}
+
+GROWTH_WEIGHT = 0.5
+PROFITABILITY_WEIGHT = 0.3
+SAFETY_WEIGHT = 0.2
+
+# 成長懲罰因子：兩項成長指標(EPS成長率、營收CAGR)皆未達標時，Growth 模組得分為 0（兩項
+# 之外唯一低於 40% 的可能值，50/100 都已經 >=40%），基本面總分強制打 8 折——過濾「殖利率
+# 高但沒有成長動能」的股票。
+GROWTH_PENALTY_THRESHOLD = 40.0  # percent, Growth 模組自己的得分
+GROWTH_PENALTY_MULTIPLIER = 0.8
+
 TWSE_VALUATION_URL = "https://openapi.twse.com.tw/v1/exchangeReport/BWIBBU_ALL"
 TPEX_VALUATION_URL = "https://www.tpex.org.tw/openapi/v1/tpex_mainboard_peratio_analysis"
 _HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
@@ -137,6 +154,10 @@ def analyze(symbol: str) -> dict:
             "has_data": False,
             "profile": {}, "profitability": {}, "growth": {}, "shareholder_return": {},
             "checklist": [], "rating": None, "rating_label": "資料不足",
+            "module_scores": {
+                "growth": None, "profitability": None, "safety": None,
+                "base_score": None, "growth_penalty_applied": False,
+            },
             "summary": reason,
         }
     valuation = _load_valuation().get(symbol)
@@ -147,6 +168,10 @@ def analyze(symbol: str) -> dict:
             "has_data": False,
             "profile": {}, "profitability": {}, "growth": {}, "shareholder_return": {},
             "checklist": [], "rating": None, "rating_label": "資料不足",
+            "module_scores": {
+                "growth": None, "profitability": None, "safety": None,
+                "base_score": None, "growth_penalty_applied": False,
+            },
             "summary": f"查無 {symbol} 的財報資料（可能是 ETF 或非公司證券，FinMind 未提供財報）。",
         }
 
@@ -219,36 +244,36 @@ def analyze(symbol: str) -> dict:
 
     checklist = [
         {
-            "key": "eps_growth", "label": f"EPS成長率(近四季) > {EPS_GROWTH_MIN:.0f}%",
+            "key": "eps_growth", "category": "growth", "label": f"EPS成長率(近四季) > {EPS_GROWTH_MIN:.0f}%",
             "value": eps_growth, "passed": None if eps_growth is None else eps_growth > EPS_GROWTH_MIN,
         },
         {
-            "key": "roe", "label": f"ROE > {ROE_MIN:.0f}%",
+            "key": "roe", "category": "profitability", "label": f"ROE > {ROE_MIN:.0f}%",
             "value": roe, "passed": None if roe is None else roe > ROE_MIN,
         },
         {
-            "key": "revenue_cagr", "label": f"營收CAGR(近三年) > {REVENUE_CAGR_MIN:.0f}%",
+            "key": "revenue_cagr", "category": "growth", "label": f"營收CAGR(近三年) > {REVENUE_CAGR_MIN:.0f}%",
             "value": revenue_cagr, "passed": None if revenue_cagr is None else revenue_cagr > REVENUE_CAGR_MIN,
         },
         {
-            "key": "gross_margin_trend", "label": "毛利率持平或上升(YoY)",
+            "key": "gross_margin_trend", "category": "profitability", "label": "毛利率持平或上升(YoY)",
             "value": gross_margin_yoy,
             "passed": None if gross_margin_yoy is None else gross_margin_yoy >= GROSS_MARGIN_TOLERANCE,
         },
         {
-            "key": "debt_ratio", "label": f"負債比 < {DEBT_RATIO_MAX:.0f}%",
+            "key": "debt_ratio", "category": "safety", "label": f"負債比 < {DEBT_RATIO_MAX:.0f}%",
             "value": debt_ratio, "passed": None if debt_ratio is None else debt_ratio < DEBT_RATIO_MAX,
         },
         {
-            "key": "free_cash_flow", "label": "自由現金流為正",
+            "key": "free_cash_flow", "category": "safety", "label": "自由現金流為正",
             "value": free_cash_flow, "passed": None if free_cash_flow is None else free_cash_flow > 0,
         },
         {
-            "key": "current_ratio", "label": f"流動比率 > {CURRENT_RATIO_MIN:.0f}%",
+            "key": "current_ratio", "category": "safety", "label": f"流動比率 > {CURRENT_RATIO_MIN:.0f}%",
             "value": current_ratio, "passed": None if current_ratio is None else current_ratio > CURRENT_RATIO_MIN,
         },
         {
-            "key": "dividend_yield", "label": f"殖利率 > {DIVIDEND_YIELD_MIN:.0f}%",
+            "key": "dividend_yield", "category": "safety", "label": f"殖利率 > {DIVIDEND_YIELD_MIN:.0f}%",
             "value": valuation.get("dividend_yield") if valuation else None,
             "passed": (
                 None if not valuation or valuation.get("dividend_yield") is None
@@ -258,20 +283,59 @@ def analyze(symbol: str) -> dict:
     ]
 
     evaluable = [c for c in checklist if c["passed"] is not None]
-    passed_count = sum(1 for c in evaluable if c["passed"])
-    rating = round(1 + passed_count / len(evaluable) * 4, 1) if evaluable else None
-    rating_label = f"{rating:.1f} / 5.0（{passed_count}/{len(evaluable)} 項達標）" if rating is not None else "資料不足"
+
+    def _module_score(keys: set[str]) -> float | None:
+        items = [c for c in evaluable if c["key"] in keys]
+        if not items:
+            return None
+        return round(100 * sum(1 for c in items if c["passed"]) / len(items), 1)
+
+    growth_score = _module_score(GROWTH_KEYS)
+    profitability_score = _module_score(PROFITABILITY_KEYS)
+    safety_score = _module_score(SAFETY_KEYS)
+
+    # 若某模組完全沒有可評估的指標（資料缺漏，非「不及格」），排除該模組並依剩餘模組的權重
+    # 比例重新分配——「不知道」跟「評估後不及格」是兩種狀態，不該混為一談（同一份資料裡
+    # `passed: None` 本來就是特別留給這個用途的第三種狀態）。
+    modules = [
+        (growth_score, GROWTH_WEIGHT),
+        (profitability_score, PROFITABILITY_WEIGHT),
+        (safety_score, SAFETY_WEIGHT),
+    ]
+    available = [(score, weight) for score, weight in modules if score is not None]
+    weight_total = sum(weight for _, weight in available)
+    base_score = (
+        round(sum(score * weight for score, weight in available) / weight_total, 1)
+        if weight_total else None
+    )
+
+    growth_penalty_applied = growth_score is not None and growth_score < GROWTH_PENALTY_THRESHOLD
+    if growth_penalty_applied and base_score is not None:
+        base_score = round(base_score * GROWTH_PENALTY_MULTIPLIER, 1)
+
+    # 輸出層轉譯：底層改成 0-100 的基本面基礎分，但對外仍輸出 1.0-5.0 星等，downstream
+    # (combined.py 的 _fundamental_tier 門檻、前端 Stars 元件) 完全不用改。
+    rating = round(1.0 + base_score / 100 * 4.0, 1) if base_score is not None else None
+    rating_label = (
+        f"{rating:.1f} / 5.0（成長{growth_score:.0f} 獲利{profitability_score:.0f} 安全{safety_score:.0f}）"
+        if rating is not None and None not in (growth_score, profitability_score, safety_score)
+        else f"{rating:.1f} / 5.0" if rating is not None else "資料不足"
+    )
+    if growth_penalty_applied and rating_label != "資料不足":
+        rating_label += "（成長動能不足，總分已打8折）"
 
     if rating is None:
         summary = f"{symbol} 財報資料不足以產生評等。"
     else:
         strengths = [c["label"] for c in evaluable if c["passed"]]
         weaknesses = [c["label"] for c in evaluable if not c["passed"]]
-        parts = [f"{symbol} 基本面綜合評等 {rating:.1f}/5.0，{len(evaluable)} 項可評估指標中達標 {passed_count} 項。"]
+        parts = [f"{symbol} 基本面綜合評等 {rating:.1f}/5.0，{len(evaluable)} 項可評估指標中達標 {len(strengths)} 項。"]
         if strengths:
             parts.append("優勢：" + "、".join(strengths) + "。")
         if weaknesses:
             parts.append("待觀察：" + "、".join(weaknesses) + "。")
+        if growth_penalty_applied:
+            parts.append("成長動能嚴重不足（成長性模組未達標），總分已強制打8折。")
         summary = "".join(parts)
 
     return {
@@ -305,5 +369,12 @@ def analyze(symbol: str) -> dict:
         "checklist": checklist,
         "rating": rating,
         "rating_label": rating_label,
+        "module_scores": {
+            "growth": growth_score,
+            "profitability": profitability_score,
+            "safety": safety_score,
+            "base_score": base_score,
+            "growth_penalty_applied": growth_penalty_applied,
+        },
         "summary": summary,
     }

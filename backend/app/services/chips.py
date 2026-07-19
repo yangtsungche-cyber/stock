@@ -63,7 +63,7 @@ def analyze_margin(history: list[dict]) -> dict:
                 "code": "M1" if surging else "M1-r",
                 "side": "sell" if surging else "buy",
                 "label": "融資餘額大幅增加" if surging else "融資餘額大幅減少",
-                "confidence": 55,
+                "tier": "medium", "confidence": 50,
                 "reason": (
                     f"融資餘額單日變動 {change_pct:+.2f}%，追高風險上升"
                     if surging
@@ -75,7 +75,7 @@ def analyze_margin(history: list[dict]) -> dict:
         if ratio is not None and ratio >= SHORT_MARGIN_RATIO_HIGH:
             signals.append({
                 "code": "M2", "side": "buy", "label": "券資比偏高，留意軋空",
-                "confidence": 50,
+                "tier": "medium", "confidence": 50,
                 "reason": f"券資比 {ratio:.2f}%，融券回補若加速可能推升股價",
             })
 
@@ -85,7 +85,7 @@ def analyze_margin(history: list[dict]) -> dict:
                 "code": "M3" if rising else "M3-r",
                 "side": "sell" if rising else "buy",
                 "label": f"融資餘額連續 {streak['days']} 日增加" if rising else f"融資餘額連續 {streak['days']} 日減少",
-                "confidence": 45,
+                "tier": "medium", "confidence": 50,
                 "reason": "融資餘額持續增加，散戶追價意願提高" if rising else "融資餘額持續減少，籌碼趨於清淡",
             })
 
@@ -120,7 +120,7 @@ def analyze_institutional(history: list[dict]) -> dict:
             "code": "I1" if buying else "I2",
             "side": "buy" if buying else "sell",
             "label": f"三大法人連續 {streak['days']} 日買超" if buying else f"三大法人連續 {streak['days']} 日賣超",
-            "confidence": 60,
+            "tier": "medium", "confidence": 50,
             "reason": "三大法人買超力道延續，籌碼面轉強" if buying else "三大法人賣超力道延續，籌碼面轉弱",
         })
 
@@ -128,12 +128,14 @@ def analyze_institutional(history: list[dict]) -> dict:
     if foreign_net > 0 and trust_net > 0:
         signals.append({
             "code": "I3", "side": "buy", "label": "外資投信同步買超",
-            "confidence": 55, "reason": "外資與投信同日買超，籌碼集中度高",
+            "tier": "medium", "confidence": 50,
+            "reason": "外資與投信同日買超，籌碼集中度高",
         })
     elif foreign_net < 0 and trust_net < 0:
         signals.append({
             "code": "I4", "side": "sell", "label": "外資投信同步賣超",
-            "confidence": 55, "reason": "外資與投信同日賣超，籌碼面轉弱",
+            "tier": "medium", "confidence": 50,
+            "reason": "外資與投信同日賣超，籌碼面轉弱",
         })
 
     if len(history) >= 2:
@@ -141,12 +143,14 @@ def analyze_institutional(history: list[dict]) -> dict:
         if prev_foreign <= 0 and foreign_net > 0:
             signals.append({
                 "code": "I5", "side": "buy", "label": "外資由賣轉買",
-                "confidence": 45, "reason": "外資賣超轉為買超，留意風向轉變",
+                "tier": "weak", "confidence": 40,
+                "reason": "外資賣超轉為買超，留意風向轉變",
             })
         elif prev_foreign >= 0 and foreign_net < 0:
             signals.append({
                 "code": "I6", "side": "sell", "label": "外資由買轉賣",
-                "confidence": 45, "reason": "外資買超轉為賣超，留意風向轉變",
+                "tier": "weak", "confidence": 40,
+                "reason": "外資買超轉為賣超，留意風向轉變",
             })
 
     return {"streak": streak, "rolling": rolling, "signals": signals, "has_data": True}

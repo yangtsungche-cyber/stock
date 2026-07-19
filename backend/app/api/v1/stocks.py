@@ -302,5 +302,11 @@ async def post_batch_report(body: BatchReportRequest) -> Response:
         raise HTTPException(status_code=422, detail=f"一次最多查詢 {BATCH_REPORT_MAX_SYMBOLS} 檔股票")
 
     reports = await asyncio.gather(*(report.analyze_full(s) for s in symbols))
-    pdf_bytes = await asyncio.to_thread(report.render_pdf, list(reports))
+    # V3.2：訊號品質 D 級（訊號基礎過窄，系統本來就不建議當方向性訊號）直接跳過、不產出
+    # 該檔報告——但抓取失敗（error 不為 None）的個股仍要保留，讓使用者知道那檔查詢失敗，
+    # 跟「查得到但訊號品質太差被過濾」是兩種不同狀況，不能都吃掉不呈現。
+    filtered = [r for r in reports if r.get("error") or r["decision"]["grade"] != "D"]
+    if not filtered:
+        raise HTTPException(status_code=422, detail="所選股票訊號品質皆為 D 級（訊號基礎過窄），已全數略過，無報告可產生")
+    pdf_bytes = await asyncio.to_thread(report.render_pdf, filtered)
     return _pdf_response(pdf_bytes, "批次分析報告.pdf")

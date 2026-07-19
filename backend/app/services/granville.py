@@ -83,13 +83,13 @@ def analyze(df: pd.DataFrame, ind: dict) -> dict:
         if crossed_up and turned_up:
             signals.append({
                 "code": "B1", "side": "buy", "label": "回升買進",
-                "confidence": 70,
+                "tier": "strong", "confidence": 70,
                 "reason": "均線剛轉為上升，股價由下往上穿越MA20",
             })
         if crossed_down and turned_down:
             signals.append({
                 "code": "S1", "side": "sell", "label": "跌破賣出",
-                "confidence": 70,
+                "tier": "strong", "confidence": 70,
                 "reason": "均線剛轉為下降，股價由上往下跌破MA20",
             })
 
@@ -105,12 +105,14 @@ def analyze(df: pd.DataFrame, ind: dict) -> dict:
                 if vol_ok:
                     signals.append({
                         "code": "B2", "side": "buy", "label": "假跌破支撐買點",
-                        "confidence": 65, "reason": "均線仍上升，股價短暫跌破後帶量收回MA20之上",
+                        "tier": "medium", "confidence": 50,
+                        "reason": "均線仍上升，股價短暫跌破後帶量收回MA20之上",
                     })
                 else:
                     signals.append({
                         "code": "B2-weak", "side": "buy", "label": "疑似假B2（量能不足）",
-                        "confidence": 35, "reason": "股價雖收回MA20之上，但成交量未達20日均量，訊號可信度較低",
+                        "tier": "weak", "confidence": 40,
+                        "reason": "股價雖收回MA20之上，但成交量未達20日均量，訊號可信度較低",
                     })
 
         if dir20 == "down":
@@ -120,12 +122,14 @@ def analyze(df: pd.DataFrame, ind: dict) -> dict:
                 if vol_ok:
                     signals.append({
                         "code": "S2", "side": "sell", "label": "假突破反壓賣點",
-                        "confidence": 65, "reason": "均線仍下降，股價短暫突破後帶量跌回MA20之下",
+                        "tier": "medium", "confidence": 50,
+                        "reason": "均線仍下降，股價短暫突破後帶量跌回MA20之下",
                     })
                 else:
                     signals.append({
                         "code": "S2-weak", "side": "sell", "label": "疑似假S2（量能不足）",
-                        "confidence": 35, "reason": "股價雖跌回MA20之下，但成交量未達20日均量，訊號可信度較低",
+                        "tier": "weak", "confidence": 40,
+                        "reason": "股價雖跌回MA20之下，但成交量未達20日均量，訊號可信度較低",
                     })
 
     if len(bias20) > 3 and not bias20.iloc[-4:].isna().any():
@@ -138,7 +142,8 @@ def analyze(df: pd.DataFrame, ind: dict) -> dict:
             if never_crossed and narrowed_then_widened:
                 signals.append({
                     "code": "B3", "side": "buy", "label": "回檔不破支撐買點",
-                    "confidence": 60, "reason": "股價未跌破MA20，乖離收斂後再度擴大",
+                    "tier": "medium", "confidence": 50,
+                    "reason": "股價未跌破MA20，乖離收斂後再度擴大",
                 })
         if dir20 == "down":
             never_crossed = (close.iloc[-4:] < ma20.iloc[-4:]).all()
@@ -146,19 +151,22 @@ def analyze(df: pd.DataFrame, ind: dict) -> dict:
             if never_crossed and narrowed_then_widened:
                 signals.append({
                     "code": "S3", "side": "sell", "label": "反彈不過壓力賣點",
-                    "confidence": 60, "reason": "股價未突破MA20，乖離收斂後再度擴大",
+                    "tier": "medium", "confidence": 50,
+                    "reason": "股價未突破MA20，乖離收斂後再度擴大",
                 })
 
     if len(close) >= 2 and not pd.isna(bias20.iloc[-1]):
         if bias20.iloc[-1] <= -extreme_threshold and close.iloc[-1] > close.iloc[-2]:
             signals.append({
                 "code": "B4", "side": "buy", "label": "超跌反彈買點",
-                "confidence": 55, "reason": f"乖離率 {bias20.iloc[-1]:.2f}% 超跌，出現反彈跡象",
+                "tier": "weak", "confidence": 40,
+                "reason": f"乖離率 {bias20.iloc[-1]:.2f}% 超跌，出現反彈跡象",
             })
         if bias20.iloc[-1] >= extreme_threshold and close.iloc[-1] < close.iloc[-2]:
             signals.append({
                 "code": "S4", "side": "sell", "label": "超漲回落賣點",
-                "confidence": 55, "reason": f"乖離率 {bias20.iloc[-1]:.2f}% 過熱，出現回落跡象",
+                "tier": "weak", "confidence": 40,
+                "reason": f"乖離率 {bias20.iloc[-1]:.2f}% 過熱，出現回落跡象",
             })
 
     return {
