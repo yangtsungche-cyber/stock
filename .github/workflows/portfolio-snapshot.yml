@@ -1,0 +1,16 @@
+name: Daily Portfolio Value Snapshot
+
+# 每個交易日台北時間 18:00 觸發（10:00 UTC，跟 backfill-analysis-returns.yml 同一時段）——
+# 收盤後才有當天的收盤價可用。`/portfolio/snapshot` 只用 bulk 快照資料算市值（不跑分鐘等級
+# 的技術面/基本面全掃描），秒級完成；同一天重複呼叫是 upsert on (date, owner)，不會重複寫入。
+on:
+  schedule:
+    - cron: "0 10 * * 1-5"
+  workflow_dispatch: {}
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger portfolio value snapshot
+        run: curl -sf --max-time 60 -X POST "https://stock-backend-884724294224.asia-east1.run.app/api/v1/portfolio/snapshot"

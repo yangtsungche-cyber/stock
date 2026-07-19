@@ -6,39 +6,58 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { PortfolioValueChart } from "@/components/portfolio-value-chart";
 import { SortableTh } from "@/components/sortable-th";
 import { useSortableData } from "@/lib/use-sortable-data";
 import { SUGGESTION_BADGE, type Suggestion } from "@/lib/suggestion-badge";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
+// 3 個固定成員——這個專案是單一使用者的個人工具，不需要一般化成任意多人的帳號系統，
+// 固定清單比再蓋一套「新增/刪除成員」的管理介面務實。
+const OWNERS = ["我", "太太", "女兒"] as const;
+type Owner = (typeof OWNERS)[number];
+
 // The dashboard takes minutes to compute (a live technical+fundamental pass over every holding),
 // so re-running it every time this page remounts — e.g. navigating to a stock's detail page and
-// back — would be wasteful. Cache the last result in sessionStorage; only "重新整理" (or the very
-// first visit this session) triggers a real recompute.
-const CACHE_KEY = "portfolio-dashboard-cache";
+// back — would be wasteful. Cache the last result in sessionStorage, **per owner** (switching
+// the 我/太太/女兒 tab must not show another member's stale cached numbers); only "重新整理"
+// (or the very first visit this session for that owner) triggers a real recompute.
+const CACHE_KEY_PREFIX = "portfolio-dashboard-cache:";
 
 type CachedDashboard = { holdings: Holding[]; cachedAt: string };
 
-function readCache(): CachedDashboard | null {
+function readCache(owner: Owner): CachedDashboard | null {
   if (typeof window === "undefined") return null;
   try {
-    const raw = window.sessionStorage.getItem(CACHE_KEY);
+    const raw = window.sessionStorage.getItem(CACHE_KEY_PREFIX + owner);
     return raw ? (JSON.parse(raw) as CachedDashboard) : null;
   } catch {
     return null;
   }
 }
 
-function writeCache(holdings: Holding[]): string {
+function writeCache(owner: Owner, holdings: Holding[]): string {
   const cachedAt = new Date().toISOString();
   try {
-    window.sessionStorage.setItem(CACHE_KEY, JSON.stringify({ holdings, cachedAt }));
+    window.sessionStorage.setItem(CACHE_KEY_PREFIX + owner, JSON.stringify({ holdings, cachedAt }));
   } catch {
     // sessionStorage unavailable — just skip caching, next mount will recompute
   }
   return cachedAt;
 }
+
+type OwnerSummary = {
+  owner: string;
+  market_value: number;
+  unrealized_pl: number;
+  unrealized_pl_pct: number | null;
+  estimated_dividend_total: number;
+  holding_count: number;
+  error_count: number;
+};
+
+type PortfolioSummary = { owners: OwnerSummary[]; total: OwnerSummary & { owner?: string } };
 
 type PreviewRow = {
   symbol: string;
@@ -61,6 +80,9 @@ type Holding = {
   unrealized_pl?: number;
   unrealized_pl_pct?: number | null;
   weight_pct?: number | null;
+  dividend_yield_pct?: number | null;
+  estimated_dividend_per_share?: number | null;
+  estimated_dividend_total?: number | null;
   technical_score?: number;
   technical_verdict_label?: string;
   fundamental_rating?: number | null;
@@ -116,6 +138,10 @@ function getHoldingSortValue(h: Holding, key: string): string | number | null | 
       return h.unrealized_pl;
     case "unrealized_pl_pct":
       return h.unrealized_pl_pct;
+    case "dividend_yield_pct":
+      return h.dividend_yield_pct;
+    case "estimated_dividend_total":
+      return h.estimated_dividend_total;
     case "technical_score":
       return h.technical_score;
     case "fundamental_rating":
@@ -130,6 +156,13 @@ function getHoldingSortValue(h: Holding, key: string): string | number | null | 
 }
 
 export function PortfolioDashboard() {
+  const [selectedOwner, setSelectedOwner] = useState<Owner>("我");
+  const [showValueChart, setShowValueChart] = useState(false);
+
+  const [summary, setSummary] = useState<PortfolioSummary | null>(null);
+  const [summaryStatus, setSummaryStatus] = useState<"loading" | "done" | "error">("loading");
+  const [summaryError, setSummaryError] = useState<string | null>(null);
+
   const [showPaste, setShowPaste] = useState(false);
   const [pasteText, setPasteText] = useState("");
   const [parseStatus, setParseStatus] = useState<"idle" | "parsing" | "done" | "error">("idle");
@@ -143,18 +176,36 @@ export function PortfolioDashboard() {
   const [dashboardError, setDashboardError] = useState<string | null>(null);
   const [cachedAt, setCachedAt] = useState<string | null>(null);
 
-  async function fetchDashboard() {
+  async function fetchSummary() {
+    setSummaryStatus("loading");
+    setSummaryError(null);
+    try {
+      const res = await fetch(`${API_URL}/api/v1/portfolio/summary`);
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        throw new Error(body?.detail ?? `HTTP ${res.status}`);
+      }
+      const body: PortfolioSummary = await res.json();
+      setSummary(body);
+      setSummaryStatus("done");
+    } catch (err) {
+      setSummaryError(err instanceof Error ? err.message : String(err));
+      setSummaryStatus("error");
+    }
+  }
+
+  async function fetchDashboard(owner: Owner) {
     setDashboardStatus("loading");
     setDashboardError(null);
     try {
-      const res = await fetch(`${API_URL}/api/v1/portfolio`);
+      const res = await fetch(`${API_URL}/api/v1/portfolio?owner=${encodeURIComponent(owner)}`);
       if (!res.ok) {
         const body = await res.json().catch(() => null);
         throw new Error(body?.detail ?? `HTTP ${res.status}`);
       }
       const body: { holdings: Holding[] } = await res.json();
       setHoldings(body.holdings);
-      setCachedAt(writeCache(body.holdings));
+      setCachedAt(writeCache(owner, body.holdings));
       setDashboardStatus("done");
     } catch (err) {
       setDashboardError(err instanceof Error ? err.message : String(err));
@@ -163,16 +214,21 @@ export function PortfolioDashboard() {
   }
 
   useEffect(() => {
-    const cached = readCache();
+    fetchSummary();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const cached = readCache(selectedOwner);
     if (cached) {
       setHoldings(cached.holdings);
       setCachedAt(cached.cachedAt);
       setDashboardStatus("done");
     } else {
-      fetchDashboard();
+      fetchDashboard(selectedOwner);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [selectedOwner]);
 
   async function parseText() {
     setParseStatus("parsing");
@@ -213,6 +269,7 @@ export function PortfolioDashboard() {
   const totalUnrealizedPl = validHoldings.reduce((sum, h) => sum + (h.unrealized_pl ?? 0), 0);
   const totalCostBasis = totalMarketValue - totalUnrealizedPl;
   const totalUnrealizedPlPct = totalCostBasis !== 0 ? (totalUnrealizedPl / totalCostBasis) * 100 : null;
+  const totalEstimatedDividend = validHoldings.reduce((sum, h) => sum + (h.estimated_dividend_total ?? 0), 0);
 
   async function confirmImport() {
     setImportStatus("importing");
@@ -220,7 +277,7 @@ export function PortfolioDashboard() {
       const res = await fetch(`${API_URL}/api/v1/portfolio/import`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ rows: previewRows }),
+        body: JSON.stringify({ owner: selectedOwner, rows: previewRows }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => null);
@@ -232,18 +289,119 @@ export function PortfolioDashboard() {
       setParseStatus("idle");
       setPreviewRows([]);
       setPreviewErrors([]);
-      await fetchDashboard();
+      await Promise.all([fetchDashboard(selectedOwner), fetchSummary()]);
     } catch (err) {
       setParseError(err instanceof Error ? err.message : String(err));
       setImportStatus("error");
     }
   }
 
+  const summaryByOwner = new Map((summary?.owners ?? []).map((o) => [o.owner, o]));
+
   return (
     <div className="w-full max-w-5xl space-y-4">
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-base">持股庫存匯入</CardTitle>
+          <CardTitle className="text-base">持股總覽</CardTitle>
+          <Button variant="secondary" size="sm" onClick={() => setShowValueChart((v) => !v)}>
+            {showValueChart ? "收起市值歷史" : "查看市值歷史"}
+          </Button>
+        </CardHeader>
+        <CardContent>
+          {summaryStatus === "loading" && <p className="text-sm text-muted-foreground">讀取中…</p>}
+          {summaryStatus === "error" && <p className="text-sm text-muted-foreground">讀取失敗：{summaryError}</p>}
+          {summaryStatus === "done" && summary && (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="text-muted-foreground">
+                  <tr className="text-left">
+                    <th className="py-1 pr-2">成員</th>
+                    <th className="py-1 pr-2 text-right">市值</th>
+                    <th className="py-1 pr-2 text-right">損益</th>
+                    <th className="py-1 pr-2 text-right">損益%</th>
+                    <th className="py-1 pr-2 text-right">預估股利</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {OWNERS.map((owner) => {
+                    const s = summaryByOwner.get(owner);
+                    return (
+                      <tr
+                        key={owner}
+                        className={`cursor-pointer border-t align-top hover:bg-muted/50 ${
+                          selectedOwner === owner ? "bg-muted/50" : ""
+                        }`}
+                        onClick={() => setSelectedOwner(owner)}
+                      >
+                        <td className="py-1.5 pr-2 font-medium">{owner}</td>
+                        {s && s.holding_count > 0 ? (
+                          <>
+                            <td className="py-1.5 pr-2 text-right tabular-nums">
+                              {s.market_value.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                            </td>
+                            <td className="py-1.5 pr-2 text-right">
+                              <PlCell value={s.unrealized_pl} />
+                            </td>
+                            <td className="py-1.5 pr-2 text-right tabular-nums">
+                              {s.unrealized_pl_pct != null ? `${s.unrealized_pl_pct > 0 ? "+" : ""}${s.unrealized_pl_pct}%` : "—"}
+                            </td>
+                            <td className="py-1.5 pr-2 text-right tabular-nums">
+                              {s.estimated_dividend_total.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                            </td>
+                          </>
+                        ) : (
+                          <td className="py-1.5 pr-2 text-muted-foreground" colSpan={4}>
+                            尚無庫存資料
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })}
+                  <tr className="border-t-2 font-medium">
+                    <td className="py-1.5 pr-2">總計</td>
+                    <td className="py-1.5 pr-2 text-right tabular-nums">
+                      {summary.total.market_value.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                    </td>
+                    <td className="py-1.5 pr-2 text-right">
+                      <PlCell value={summary.total.unrealized_pl} />
+                    </td>
+                    <td className="py-1.5 pr-2 text-right tabular-nums">
+                      {summary.total.unrealized_pl_pct != null
+                        ? `${summary.total.unrealized_pl_pct > 0 ? "+" : ""}${summary.total.unrealized_pl_pct}%`
+                        : "—"}
+                    </td>
+                    <td className="py-1.5 pr-2 text-right tabular-nums">
+                      {summary.total.estimated_dividend_total.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+        {showValueChart && (
+          <CardContent className="border-t pt-4">
+            <PortfolioValueChart />
+          </CardContent>
+        )}
+      </Card>
+
+      <div className="flex gap-2">
+        {OWNERS.map((owner) => (
+          <Button
+            key={owner}
+            variant={selectedOwner === owner ? "default" : "secondary"}
+            size="sm"
+            onClick={() => setSelectedOwner(owner)}
+          >
+            {owner}
+          </Button>
+        ))}
+      </div>
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle className="text-base">持股庫存匯入（{selectedOwner}）</CardTitle>
           <Button variant="secondary" onClick={() => setShowPaste((v) => !v)}>
             {showPaste ? "收起" : "更新庫存"}
           </Button>
@@ -331,14 +489,14 @@ export function PortfolioDashboard() {
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-base">持股盤點與建議</CardTitle>
+          <CardTitle className="text-base">持股盤點與建議（{selectedOwner}）</CardTitle>
           <div className="flex items-center gap-2">
             {cachedAt && dashboardStatus === "done" && (
               <span className="text-xs text-muted-foreground">
                 上次更新：{new Date(cachedAt).toLocaleTimeString()}
               </span>
             )}
-            <Button onClick={fetchDashboard} disabled={dashboardStatus === "loading"} variant="secondary">
+            <Button onClick={() => fetchDashboard(selectedOwner)} disabled={dashboardStatus === "loading"} variant="secondary">
               {dashboardStatus === "loading" ? "計算中…" : "重新整理"}
             </Button>
           </div>
@@ -385,6 +543,12 @@ export function PortfolioDashboard() {
                     <span className="text-muted-foreground">—</span>
                   )}
                 </div>
+                <div>
+                  <span className="text-muted-foreground">預估總股利　</span>
+                  <span className="font-medium tabular-nums">
+                    {totalEstimatedDividend.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                  </span>
+                </div>
               </div>
               <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -398,6 +562,8 @@ export function PortfolioDashboard() {
                     <SortableTh sortKey="weight_pct" label="權重%" activeKey={sortKey} dir={sortDir} onSort={requestSort} />
                     <SortableTh sortKey="unrealized_pl" label="損益" activeKey={sortKey} dir={sortDir} onSort={requestSort} />
                     <SortableTh sortKey="unrealized_pl_pct" label="損益%" activeKey={sortKey} dir={sortDir} onSort={requestSort} />
+                    <SortableTh sortKey="dividend_yield_pct" label="殖利率" activeKey={sortKey} dir={sortDir} onSort={requestSort} />
+                    <SortableTh sortKey="estimated_dividend_total" label="預估股利" activeKey={sortKey} dir={sortDir} onSort={requestSort} />
                     <SortableTh sortKey="technical_score" label="技術分數" activeKey={sortKey} dir={sortDir} onSort={requestSort} />
                     <SortableTh sortKey="fundamental_rating" label="基本面★" activeKey={sortKey} dir={sortDir} onSort={requestSort} />
                     <SortableTh sortKey="quality_badge" label="財報狗清單" align="center" activeKey={sortKey} dir={sortDir} onSort={requestSort} />
@@ -415,7 +581,7 @@ export function PortfolioDashboard() {
                       <td className="py-1.5 pr-2 text-right tabular-nums">{h.shares.toLocaleString()}</td>
                       <td className="py-1.5 pr-2 text-right tabular-nums">{h.cost_basis.toFixed(2)}</td>
                       {h.error ? (
-                        <td className="py-1.5 pr-2 text-muted-foreground" colSpan={9}>
+                        <td className="py-1.5 pr-2 text-muted-foreground" colSpan={11}>
                           無法取得資料：{h.error}
                         </td>
                       ) : (
@@ -430,6 +596,14 @@ export function PortfolioDashboard() {
                           </td>
                           <td className="py-1.5 pr-2 text-right tabular-nums">
                             {h.unrealized_pl_pct != null ? `${h.unrealized_pl_pct > 0 ? "+" : ""}${h.unrealized_pl_pct}%` : "—"}
+                          </td>
+                          <td className="py-1.5 pr-2 text-right tabular-nums">
+                            {h.dividend_yield_pct != null ? `${h.dividend_yield_pct.toFixed(2)}%` : "—"}
+                          </td>
+                          <td className="py-1.5 pr-2 text-right tabular-nums">
+                            {h.estimated_dividend_total != null
+                              ? h.estimated_dividend_total.toLocaleString(undefined, { maximumFractionDigits: 0 })
+                              : "—"}
                           </td>
                           <td className="py-1.5 pr-2 text-right">
                             <ScoreCell score={h.technical_score ?? 0} />

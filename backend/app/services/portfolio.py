@@ -18,7 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import BuffettCandidate, QualityStockCandidate, UserPortfolio
-from app.services import combined, company, scan
+from app.services import combined, company, fundamentals, scan, screening
 
 SUGGESTION_LABELS = {"add": "加碼", "hold": "續抱", "watch": "觀察", "trim": "減碼"}
 
@@ -114,14 +114,22 @@ async def build_dashboard(db: AsyncSession, portfolio_rows: list[UserPortfolio])
     if not portfolio_rows:
         return []
 
-    symbols = [r.symbol for r in portfolio_rows]
-    scan_results = await scan.run_scan([], [], symbols_override=symbols)
-    results_by_symbol = {r["symbol"]: r for r in scan_results}
-
+    # DB reads must happen *before* the long scan, not after — `scan.run_scan` over even a
+    # handful of holdings takes minutes (live per-symbol technical+fundamental pipeline), and
+    # Neon (serverless Postgres) closes connections that sit idle that long. Doing these two
+    # quick queries first and never touching `db` again avoids reusing a session that may have
+    # gone stale underneath the request by the time the scan finishes (this caused a real HTTP
+    # 500 in production — confirmed by reproducing it, then fixing by reordering).
     quality_result = await db.execute(select(QualityStockCandidate.symbol))
     quality_symbols = set(quality_result.scalars().all())
     buffett_result = await db.execute(select(BuffettCandidate.symbol))
     buffett_symbols = set(buffett_result.scalars().all())
+
+    symbols = [r.symbol for r in portfolio_rows]
+    scan_results = await scan.run_scan([], [], symbols_override=symbols)
+    results_by_symbol = {r["symbol"]: r for r in scan_results}
+
+    valuation = fundamentals._load_valuation()
 
     dashboard: list[dict] = []
     for row in portfolio_rows:
@@ -145,6 +153,15 @@ async def build_dashboard(db: AsyncSession, portfolio_rows: list[UserPortfolio])
         unrealized_pl = round(market_value - cost_total, 2)
         unrealized_pl_pct = round(unrealized_pl / cost_total * 100, 2) if cost_total else None
 
+        # 殖利率來自跟財報狗績優股清單/巴菲特選股清單同一個來源（TWSE/TPEx 當日估值快照，
+        # 免額外呼叫 FinMind）。預估股利 = 現價 * 殖利率——用「現在買、領到跟現在殖利率一樣的
+        # 股利」這個近似值反推，不是查詢個股實際配息公告，兩者可能有落差，屬已知近似。
+        dividend_yield_pct = (valuation.get(row.symbol) or {}).get("dividend_yield")
+        estimated_dividend_per_share = round(close * dividend_yield_pct / 100, 4) if dividend_yield_pct is not None else None
+        estimated_dividend_total = (
+            round(row.shares * estimated_dividend_per_share, 2) if estimated_dividend_per_share is not None else None
+        )
+
         technical_direction = combined._technical_direction(scan_result["technical_verdict"])
         fundamental_tier = combined._fundamental_tier(scan_result["fundamental_rating"])
         suggestion, suggestion_label = _derive_suggestion(technical_direction, fundamental_tier)
@@ -155,6 +172,9 @@ async def build_dashboard(db: AsyncSession, portfolio_rows: list[UserPortfolio])
             "market_value": market_value,
             "unrealized_pl": unrealized_pl,
             "unrealized_pl_pct": unrealized_pl_pct,
+            "dividend_yield_pct": dividend_yield_pct,
+            "estimated_dividend_per_share": estimated_dividend_per_share,
+            "estimated_dividend_total": estimated_dividend_total,
             "technical_score": scan_result["technical_score"],
             "technical_verdict_label": scan_result["technical_verdict_label"],
             "fundamental_rating": scan_result["fundamental_rating"],
@@ -170,3 +190,68 @@ async def build_dashboard(db: AsyncSession, portfolio_rows: list[UserPortfolio])
             d["weight_pct"] = round(d["market_value"] / total_market_value * 100, 2) if total_market_value else None
 
     return dashboard
+
+
+def build_summary(portfolio_rows: list[UserPortfolio]) -> dict:
+    """各成員（我/太太/女兒...）+ 總計的市值/損益/損益%/預估股利概況。
+
+    刻意不跑 `scan.run_scan` 的八層技術面/基本面分析（那是分鐘等級的即時運算，見
+    `build_dashboard`）——總覽頁只要market_value/損益/殖利率，全部來自已經在別處使用的
+    bulk 快照（`screening._load_daily_quotes` 的當日收盤價、`fundamentals._load_valuation`
+    的殖利率），不必為了一個總覽數字就跑全家庭所有持股的完整即時分析。
+    """
+    daily_quotes = screening._load_daily_quotes()
+    valuation = fundamentals._load_valuation()
+
+    by_owner: dict[str, list[dict]] = {}
+    for row in portfolio_rows:
+        quote = daily_quotes.get(row.symbol)
+        close = quote["price"] if quote else None
+        entry: dict = {"symbol": row.symbol, "name": row.name}
+        if close is None:
+            entry["error"] = True
+        else:
+            market_value = round(row.shares * close, 2)
+            cost_total = row.shares * row.cost_basis
+            unrealized_pl = round(market_value - cost_total, 2)
+            dividend_yield_pct = (valuation.get(row.symbol) or {}).get("dividend_yield")
+            estimated_dividend_total = (
+                round(market_value * dividend_yield_pct / 100, 2) if dividend_yield_pct is not None else 0.0
+            )
+            entry.update({
+                "market_value": market_value,
+                "cost_total": cost_total,
+                "unrealized_pl": unrealized_pl,
+                "estimated_dividend_total": estimated_dividend_total,
+            })
+        by_owner.setdefault(row.owner, []).append(entry)
+
+    def _aggregate(entries: list[dict]) -> dict:
+        valid = [e for e in entries if "error" not in e]
+        market_value = sum(e["market_value"] for e in valid)
+        cost_total = sum(e["cost_total"] for e in valid)
+        unrealized_pl = sum(e["unrealized_pl"] for e in valid)
+        estimated_dividend_total = sum(e["estimated_dividend_total"] for e in valid)
+        unrealized_pl_pct = round(unrealized_pl / cost_total * 100, 2) if cost_total else None
+        return {
+            "market_value": round(market_value, 2),
+            "unrealized_pl": round(unrealized_pl, 2),
+            "unrealized_pl_pct": unrealized_pl_pct,
+            "estimated_dividend_total": round(estimated_dividend_total, 2),
+            "holding_count": len(entries),
+            "error_count": len(entries) - len(valid),
+        }
+
+    owners = [{"owner": owner, **_aggregate(entries)} for owner, entries in sorted(by_owner.items())]
+    total = _aggregate([e for entries in by_owner.values() for e in entries])
+    return {"owners": owners, "total": total}
+
+
+def snapshot_owner_values(portfolio_rows: list[UserPortfolio]) -> dict[str, float]:
+    """今天每個成員的市值——供每日排程寫入 `portfolio_value_snapshots`, 畫市值歷史走勢圖用。
+
+    直接沿用 `build_summary` 同一套 bulk 快照算法（cheap, 非即時全掃描）, 只取每個成員的
+    市值數字, 不需要重複實作一次。
+    """
+    summary = build_summary(portfolio_rows)
+    return {o["owner"]: o["market_value"] for o in summary["owners"]}
