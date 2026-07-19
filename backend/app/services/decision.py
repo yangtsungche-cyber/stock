@@ -38,10 +38,46 @@ LAYER_LABELS = {
 TREND_BOOST = 1.15
 TREND_DAMPEN = 0.85
 
+# V3.2：訊號強度顆粒度分級——訊號不再一律用同一套信心度硬湊分數，改成「這個型態本身的
+# 動能等級（強度基數）」乘上「這個分級的固定信心度」。兩者是獨立維度：強度基數表達型態
+# 統計上的動能爆發力，信心度表達這個分級整體的可信程度；各訊號實際落點見
+# granville.py/layers.py/waves.py/chips.py 各自訊號定義裡的 "tier" 欄位。
+STRENGTH_BASE = {"strong": 100.0, "medium": 60.0, "weak": 30.0}
+TIER_CONFIDENCE = {"strong": 70.0, "medium": 50.0, "weak": 40.0}
+
+# 每個分級「單一訊號」能拿到的最大值（強度基數 × 信心度，未乘 layer_weight/trend）——
+# 用來算動態天花板，不用每次重新掃過訊號定義。
+TIER_MAX_VALUE = {tier: STRENGTH_BASE[tier] * TIER_CONFIDENCE[tier] / 100.0 for tier in STRENGTH_BASE}
+# => {"strong": 70.0, "medium": 30.0, "weak": 12.0}
+
+# 每一層「理論上可能觸發的最高分級」，由該層目前定義的訊號集合決定：
+#   granville: B1/S1 為 strong（其餘 B2-B4/S2-S4 皆 medium/weak）
+#   waves:     W5/W3 為 strong（WC 為 weak，無 medium 訊號）
+#   kd:        K3/K4（超買超賣）為 medium 是本層最高（K1/K2 交叉為 weak）
+#   macd:      D3/D4（零軸突破）為 strong（D1/D2 黃金死亡交叉為 medium）
+#   bias:      全部訊號皆為 weak
+#   rsi:       R1/R2（超買超賣）為 medium 是本層最高（R3/R4 交叉為 weak）
+#   volume:    V1/V2（量價同向確認）為 medium 是本層最高（V3/V4 背離為 weak）
+#   margin:    全部訊號皆為 medium
+#   institutional: I1-I4 為 medium 是本層最高（I5/I6 單日轉向為 weak）
+# 若未來新增/調整某層訊號的分級，這裡要同步更新，否則天花板會失準。
+LAYER_MAX_TIER = {
+    "granville": "strong",
+    "waves": "strong",
+    "kd": "medium",
+    "macd": "strong",
+    "bias": "weak",
+    "rsi": "medium",
+    "volume": "medium",
+    "margin": "medium",
+    "institutional": "medium",
+}
+
 # 覆蓋率封頂：即使分數算出來夠高，訊號基礎太窄（例如只有均線乖離率+籌碼面兩三層觸發，
 # 趨勢層/動能層完全沒表態）就不該喊出偏多/偏空——這是決策等級的硬性限制，不是把分數再打
-# 折。分數本身已經用「9層全部滿分」當固定分母正規化過一次（見 MAX_CONFIDENCE 那段說明），
-# 覆蓋率越低分數天花板本來就越低；若再把分數乘以覆蓋率折扣，等於雙重懲罰、扭曲分數本身
+# 折。分數本身已經用「每層都以自己最高分級順勢觸發」當固定分母正規化過一次（見下方
+# max_possible_weight 的算法），覆蓋率越低分數天花板本來就越低；若再把分數乘以覆蓋率折
+# 扣，等於雙重懲罰、扭曲分數本身
 # （未來要拿分數做歷史回測時，被扭曲過的分數會讓回測邏輯混亂）。改成只封頂「決策等級」，
 # 分數維持不變，兩者關注點分開——分數給後續回測用，決策等級才是要不要行動的門檻。
 # 門檻與真實案例對照：6197 佳必琪 33.3% 覆蓋率、2472 立隆電 33.3%，皆低於此門檻應封頂；
@@ -55,13 +91,10 @@ GRADE_A_MIN_COVERAGE = 70.0
 GRADE_B_MIN_COVERAGE = 50.0
 GRADE_C_MIN_COVERAGE = COVERAGE_CAP_THRESHOLD
 
-# Signals carry confidence on a 0-100 scale (see granville/layers/waves/chips).
-# The overall score is normalized against this theoretical "every layer fires
-# at maximum confidence, unanimously" ceiling — not against the weight of
-# whichever signals happened to fire. Normalizing against the latter collapses
-# to a pure direction vote (always ±100 when only one signal exists, no matter
-# how weak), which discards both breadth-of-agreement and confidence.
-MAX_CONFIDENCE = 100.0
+# 總分正規化的分母是「每一層都以自己最高分級、且順勢（拿到 TREND_BOOST）觸發」這個理論
+# 天花板（見 analyze() 內 max_possible_weight 的算法）——不是用實際觸發訊號的權重總和來
+# 歸一化。用後者會退化成純方向投票（只要有一個訊號，不論多弱都會拉到 ±100），同時丟失
+# 「訊號廣度」與「訊號分級強弱」這兩個維度。
 
 # (score floor, verdict code, verdict label) — first band whose floor the
 # score clears, checked from most bullish to most bearish.
@@ -141,7 +174,12 @@ def analyze(granville_result: dict, waves_result: dict, layers_result: dict, chi
     tagged: list[dict] = []
     layer_breakdown: list[dict] = []
     raw_total = 0.0
-    max_possible_weight = sum(LAYER_WEIGHTS.values()) * MAX_CONFIDENCE
+    # 每層以「自己最高分級 × 順勢加成」為理論天花板，再依 layer_weight 加總——見
+    # LAYER_MAX_TIER/TIER_MAX_VALUE 上方的說明與各層訊號定義的 tier 標註。
+    max_possible_weight = sum(
+        TIER_MAX_VALUE[LAYER_MAX_TIER[layer]] * layer_weight
+        for layer, layer_weight in LAYER_WEIGHTS.items()
+    ) * TREND_BOOST
 
     for layer, signals in layer_signals.items():
         layer_weight = LAYER_WEIGHTS[layer]
@@ -149,7 +187,8 @@ def analyze(granville_result: dict, waves_result: dict, layers_result: dict, chi
         layer_denom = 0.0
         for s in signals:
             mult = _trend_multiplier(s["side"], ma_alignment)
-            weight = s["confidence"] * layer_weight * mult
+            strength = STRENGTH_BASE[s["tier"]]
+            weight = strength * (s["confidence"] / 100.0) * layer_weight * mult
             signed = weight if s["side"] == "buy" else -weight
             raw_total += signed
             layer_raw += signed

@@ -143,7 +143,7 @@ def analyze(df: pd.DataFrame) -> dict:
                     "code": "W5" if up else "W5-down",
                     "side": side,
                     "label": "五波完成疑似反轉",
-                    "confidence": 50,
+                    "tier": "strong", "confidence": 70,
                     "reason": current_position,
                 })
                 w1 = abs(prices[1] - prices[0])
@@ -153,7 +153,7 @@ def analyze(df: pd.DataFrame) -> dict:
                     signals.append({
                         "code": "W3", "side": "buy" if up else "sell",
                         "label": "第3波為延伸波",
-                        "confidence": 45,
+                        "tier": "strong", "confidence": 70,
                         "reason": "第3波幅度為三推動波中最大，符合主升/主跌段特徵",
                     })
             else:
@@ -187,7 +187,7 @@ def analyze(df: pd.DataFrame) -> dict:
                 signals.append({
                     "code": "WC", "side": side,
                     "label": "ABC修正波疑似完成",
-                    "confidence": 40,
+                    "tier": "weak", "confidence": 40,
                     "reason": current_position,
                 })
             else:
