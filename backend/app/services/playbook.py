@@ -25,6 +25,9 @@ STOP_BUFFER_FLOOR = 0.02
 STOP_BUFFER_CEIL = 0.05
 STOP_BUFFER_SCALE = 0.4
 
+# V3.4：「觀望」不再是一句固定文字——依收盤價與支撐/壓力的相對距離（±3%）動態帶出對應劇本。
+NEAR_LEVEL_THRESHOLD = 0.03
+
 DISCLAIMER = (
     "以上價位與部位建議皆由歷史價量資料以固定規則運算而成，用於輔助決策品質，"
     "並非個股價格預測，亦不構成投資建議。過去績效不代表未來表現，資料可能存在延遲，"
@@ -188,12 +191,39 @@ def analyze(ind: dict, granville_result: dict, waves_result: dict, chips_result:
 
     else:
         stance, stance_label = "neutral", "觀望"
-        action_note = "訊號方向分歧或強度不足，建議暫不進場，觀察支撐／壓力區間的變化。"
         entry_zone = None
         stop_loss = None
         stop_note = None
         target = None
         risk_reward = None
+
+        # 支撐(support)一定有值（_support 最差也有 close*0.95 的保底），但壓力(resistance)
+        # 找不到明確前高/MA20 時會是 None——「接近支撐」永遠可以判斷，「接近壓力」跟「區間
+        # 震盪」都要先確認 resistance 存在，否則退化成只講支撐的版本。
+        near_support = (close - support) / close <= NEAR_LEVEL_THRESHOLD
+        near_resistance = resistance is not None and (resistance - close) / close <= NEAR_LEVEL_THRESHOLD
+
+        if near_support:
+            action_note = (
+                f"觀望：目前股價（{close:.2f}）已接近支撐位 {support:.2f}，短線跌幅趨緩。"
+                "建議暫不盲目追殺，靜待支撐位守穩並出現技術面打底訊號（如 KD 黃金交叉或量縮止跌）後，"
+                "再行考慮分批試單。"
+            )
+        elif near_resistance:
+            action_note = (
+                f"觀望：目前股價（{close:.2f}）已逼近壓力位 {resistance:.2f}，面臨前高反彈或解套賣壓。"
+                "此處不宜過度追高，操作建議維持觀望，待股價帶量突破壓力位或回檔測試支撐不破後，再行追蹤。"
+            )
+        elif resistance is not None:
+            action_note = (
+                f"觀望：目前股價（{close:.2f}）於支撐位 {support:.2f} 與壓力位 {resistance:.2f} 之間狹幅震盪，"
+                "多空訊號方向分歧且動能不足。操作建議靜待方向突破區間後，再依新訊號順勢布局。"
+            )
+        else:
+            action_note = (
+                f"觀望：目前股價（{close:.2f}）距支撐位 {support:.2f} 尚有一段距離，且暫無明確壓力參考價位，"
+                "多空訊號方向分歧且動能不足。操作建議靜待方向明確後再依新訊號順勢布局。"
+            )
 
     sizing = _position_sizing(stance, score, risk_reward)
     invalidation = _invalidation(stance, stop_loss, resistance, ma_alignment, institutional_streak)
