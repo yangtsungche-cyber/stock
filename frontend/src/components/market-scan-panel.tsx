@@ -5,6 +5,7 @@ import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { InfoTip } from "@/components/info-tip";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -115,9 +116,38 @@ export function MarketScanPanel() {
                 <tr className="text-left">
                   <th className="py-1 pr-2">股票</th>
                   <th className="py-1 pr-2">來源</th>
-                  <th className="py-1 pr-2 text-right">技術分數</th>
-                  <th className="py-1 pr-2 text-center">訊號品質</th>
-                  <th className="py-1 pr-2 text-right">基本面★</th>
+                  <th className="py-1 pr-2 text-right">
+                    技術分數
+                    <InfoTip title="技術分數">
+                      <p>
+                        綜合「八層分析」（葛蘭碧、KD、MACD、乖離率、RSI、成交量、融資融券、法人買賣、波浪）算出的技術面總分，範圍
+                        -100～+100。
+                      </p>
+                      <p>正值代表偏多訊號較強，負值代表偏空訊號較強；數字大小反映訊號強度，不代表預期漲跌幅度。</p>
+                    </InfoTip>
+                  </th>
+                  <th className="py-1 pr-2 text-center">
+                    訊號品質
+                    <InfoTip title="訊號品質（A / B / C / D）">
+                      <p>衡量技術分數的「訊號廣度」夠不夠——八層分析裡有幾層實際觸發出訊號（覆蓋率）。覆蓋率越高，這個分數才越可信：</p>
+                      <ul className="list-disc space-y-1 pl-4">
+                        <li>A 級：覆蓋率 ≥ 70%，訊號廣泛一致，可信度高。</li>
+                        <li>B 級：50% ～ 70%，尚可參考。</li>
+                        <li>C 級：40% ～ 50%，訊號較窄，建議謹慎看待。</li>
+                        <li>D 級：覆蓋率 &lt; 40%（系統會把方向性判斷直接降為中性），或原本就是中性——代表現在不建議把它當成方向性訊號。</li>
+                      </ul>
+                    </InfoTip>
+                  </th>
+                  <th className="py-1 pr-2 text-right">
+                    基本面★
+                    <InfoTip title="基本面★">
+                      <p>
+                        依據財報體質檢查清單（獲利能力、成長性、股東回報等指標）算出的 1.0～5.0
+                        顆星評分：1 + 達標項目比例 × 4。
+                      </p>
+                      <p>星數越高代表通過越多項基本面檢核，而非「買進評等」。</p>
+                    </InfoTip>
+                  </th>
                   <th className="py-1 pr-2 text-right">信心%</th>
                   <th className="py-1 pr-2 text-center">燈號</th>
                   <th className="py-1 pr-2">建議</th>

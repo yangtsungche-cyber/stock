@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { InfoTip } from "@/components/info-tip";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -226,11 +227,29 @@ export function DecisionSummaryPanel({ symbol }: { symbol: string }) {
             <span className={`h-3 w-3 shrink-0 rounded-full ${style.dot}`} />
             <Badge className={style.badge}>{data.verdict_label}</Badge>
             <Badge className={GRADE_STYLE[data.grade]}>{data.grade} 級</Badge>
+            <InfoTip title="訊號品質（A / B / C / D）">
+              <p>衡量這個分數的「訊號廣度」夠不夠——八層分析裡有幾層實際觸發出訊號（覆蓋率）。覆蓋率越高，這個分數才越可信：</p>
+              <ul className="list-disc space-y-1 pl-4">
+                <li>A 級：覆蓋率 ≥ 70%，訊號廣泛一致，可信度高。</li>
+                <li>B 級：50% ～ 70%，尚可參考。</li>
+                <li>C 級：40% ～ 50%，訊號較窄，建議謹慎看待。</li>
+                <li>D 級：覆蓋率 &lt; 40%（系統會把方向性判斷直接降為中性），或原本就是中性——代表現在不建議把它當成方向性訊號。</li>
+              </ul>
+            </InfoTip>
             <span className="text-2xl font-semibold tabular-nums">
               {data.score > 0 ? "+" : ""}
               {data.score}
             </span>
-            <span className="text-sm text-muted-foreground">綜合分數（-100 偏空 ～ +100 偏多）</span>
+            <span className="text-sm text-muted-foreground">
+              綜合分數（-100 偏空 ～ +100 偏多）
+              <InfoTip title="技術分數">
+                <p>
+                  綜合「八層分析」（葛蘭碧、KD、MACD、乖離率、RSI、成交量、融資融券、法人買賣、波浪）算出的技術面總分，範圍
+                  -100～+100。
+                </p>
+                <p>正值代表偏多訊號較強，負值代表偏空訊號較強；數字大小反映訊號強度，不代表預期漲跌幅度。</p>
+              </InfoTip>
+            </span>
           </div>
           {data.verdict_capped && (
             <p className="text-sm text-amber-600">
