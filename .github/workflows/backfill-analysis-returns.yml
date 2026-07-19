@@ -13,4 +13,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Trigger analysis history backfill
-        run: curl -sf --max-time 300 -X POST "https://stock-backend-884724294224.asia-east1.run.app/api/v1/verification/backfill"
+        env:
+          BACKEND_API_KEY: ${{ secrets.BACKEND_API_KEY }}
+        run: curl -sf --max-time 300 -X POST -H "X-API-Key: $BACKEND_API_KEY" "https://stock-backend-884724294224.asia-east1.run.app/api/v1/verification/backfill"

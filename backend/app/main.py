@@ -1,8 +1,10 @@
 import asyncio
+import hmac
 import logging
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.api.v1.buffett_stocks import router as buffett_stocks_router
 from app.api.v1.health import router as health_router
@@ -35,6 +37,26 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.middleware("http")
+async def require_api_key(request: Request, call_next):
+    # 真實個人財務資料的後端目前沒有帳號系統，只靠這組共用密鑰把裸 Cloud Run
+    # URL 擋起來，避免有人繞過前端密碼閘直接打 API。/health 留空——Cloud Run
+    # 容器探活、以及本機開發除錯都需要它一定可連得到。OPTIONS 也放行，瀏覽器
+    # 的 CORS 預檢請求本來就不會帶自訂 header。
+    if (
+        not settings.backend_api_key
+        or request.method == "OPTIONS"
+        or request.url.path.startswith("/api/v1/health")
+    ):
+        return await call_next(request)
+
+    provided = request.headers.get("x-api-key", "")
+    if not hmac.compare_digest(provided, settings.backend_api_key):
+        return JSONResponse({"detail": "Unauthorized"}, status_code=401)
+
+    return await call_next(request)
+
 
 app.include_router(buffett_stocks_router, prefix="/api/v1")
 app.include_router(health_router, prefix="/api/v1")

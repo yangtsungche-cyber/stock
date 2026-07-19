@@ -13,4 +13,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Trigger portfolio value snapshot
-        run: curl -sf --max-time 60 -X POST "https://stock-backend-884724294224.asia-east1.run.app/api/v1/portfolio/snapshot"
+        env:
+          BACKEND_API_KEY: ${{ secrets.BACKEND_API_KEY }}
+        run: curl -sf --max-time 60 -X POST -H "X-API-Key: $BACKEND_API_KEY" "https://stock-backend-884724294224.asia-east1.run.app/api/v1/portfolio/snapshot"
