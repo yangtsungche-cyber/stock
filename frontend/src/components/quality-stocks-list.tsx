@@ -12,6 +12,8 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { SortableTh } from "@/components/sortable-th";
+import { useSortableData } from "@/lib/use-sortable-data";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -80,6 +82,27 @@ function CombinedScoreExplainer() {
   );
 }
 
+function getSortValue(row: QualityStockRow, key: string): string | number | null {
+  switch (key) {
+    case "name":
+      return `${row.symbol} ${row.name}`;
+    case "price":
+      return row.price;
+    case "fcf_return":
+      return row.fcf_return_3y_avg_pct;
+    case "pb":
+      return row.pb_ratio;
+    case "pe":
+      return row.pe_ratio;
+    case "yield":
+      return row.dividend_yield_pct;
+    case "combined_score":
+      return row.combined_score;
+    default:
+      return row.rank;
+  }
+}
+
 export function QualityStocksList() {
   const [status, setStatus] = useState<"loading" | "done" | "error">("loading");
   const [data, setData] = useState<QualityStocksResponse | null>(null);
@@ -107,6 +130,10 @@ export function QualityStocksList() {
   }, []);
 
   const stocks = data?.stocks ?? [];
+  const { sortedRows, sortKey, sortDir, requestSort } = useSortableData(stocks, getSortValue, {
+    key: "rank",
+    dir: "asc",
+  });
 
   return (
     <Card className="w-full max-w-4xl">
@@ -141,20 +168,23 @@ export function QualityStocksList() {
                 <thead className="text-muted-foreground">
                   <tr className="text-left">
                     <th className="py-1 pr-2 text-right">排名</th>
-                    <th className="py-1 pr-2">股票</th>
-                    <th className="py-1 pr-2 text-right">現價</th>
-                    <th className="py-1 pr-2 text-right">3年FCF報酬率均值</th>
-                    <th className="py-1 pr-2 text-right">股價淨值比</th>
-                    <th className="py-1 pr-2 text-right">本益比</th>
-                    <th className="py-1 pr-2 text-right">殖利率</th>
-                    <th className="py-1 pr-2 text-right">
-                      綜合分數
-                      <CombinedScoreExplainer />
-                    </th>
+                    <SortableTh sortKey="name" label="股票" align="left" activeKey={sortKey} dir={sortDir} onSort={requestSort} />
+                    <SortableTh sortKey="price" label="現價" activeKey={sortKey} dir={sortDir} onSort={requestSort} />
+                    <SortableTh sortKey="fcf_return" label="3年FCF報酬率均值" activeKey={sortKey} dir={sortDir} onSort={requestSort} />
+                    <SortableTh sortKey="pb" label="股價淨值比" activeKey={sortKey} dir={sortDir} onSort={requestSort} />
+                    <SortableTh sortKey="pe" label="本益比" activeKey={sortKey} dir={sortDir} onSort={requestSort} />
+                    <SortableTh sortKey="yield" label="殖利率" activeKey={sortKey} dir={sortDir} onSort={requestSort} />
+                    <SortableTh
+                      sortKey="combined_score"
+                      label={<>綜合分數<CombinedScoreExplainer /></>}
+                      activeKey={sortKey}
+                      dir={sortDir}
+                      onSort={requestSort}
+                    />
                   </tr>
                 </thead>
                 <tbody>
-                  {stocks.map((row) => (
+                  {sortedRows.map((row) => (
                     <tr key={row.symbol} className="border-t align-top">
                       <td className="py-1.5 pr-2 text-right tabular-nums text-muted-foreground">{row.rank}</td>
                       <td className="py-1.5 pr-2">

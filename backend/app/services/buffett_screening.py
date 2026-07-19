@@ -27,7 +27,7 @@ import logging
 import time
 from datetime import date, datetime, timezone
 
-from app.services import company, finmind, screening
+from app.services import company, finmind, fundamentals, screening
 
 logger = logging.getLogger(__name__)
 
@@ -264,6 +264,7 @@ def screen_all(
 
     disposal_symbols = screening._load_disposal_symbols()
     daily_quotes = screening._load_daily_quotes()
+    valuation = fundamentals._load_valuation()
 
     deadline = time.monotonic() + max_seconds if max_seconds is not None else None
 
@@ -319,7 +320,12 @@ def screen_all(
                 cache_hits += 1
 
             if result and result["has_data"] and result["passed"]:
-                survivors.append({**stock, **result, "price": quote["price"]})
+                yield_pct = (valuation.get(symbol) or {}).get("dividend_yield")
+                survivors.append({
+                    **stock, **result,
+                    "price": quote["price"], "volume_lots": volume_lots,
+                    "dividend_yield_pct": yield_pct,
+                })
             if not cache_hit:
                 time.sleep(SECONDS_PER_SYMBOL)
 

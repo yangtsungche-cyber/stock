@@ -12,6 +12,8 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { SortableTh } from "@/components/sortable-th";
+import { useSortableData } from "@/lib/use-sortable-data";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -31,6 +33,7 @@ type BuffettStockRow = {
   fcf_per_share_3y_avg: number;
   fcf_per_share_5y_avg: number | null;
   volume_lots: number | null;
+  dividend_yield_pct: number | null;
 };
 
 type BuffettStocksResponse = {
@@ -38,12 +41,34 @@ type BuffettStocksResponse = {
   stocks: BuffettStockRow[];
 };
 
+// 只要掌握大致水準即可，小數點四捨五入取整數。
 function Trio({ latest, y3, y5, unit }: { latest: number; y3: number; y5: number | null; unit: string }) {
   return (
     <span className="tabular-nums">
-      {latest.toFixed(1)}{unit} / {y3.toFixed(1)}{unit} / {y5 != null ? `${y5.toFixed(1)}${unit}` : "—"}
+      {Math.round(latest)}{unit} / {Math.round(y3)}{unit} / {y5 != null ? `${Math.round(y5)}${unit}` : "—"}
     </span>
   );
+}
+
+function getSortValue(row: BuffettStockRow, key: string): string | number | null {
+  switch (key) {
+    case "name":
+      return `${row.symbol} ${row.name}`;
+    case "price":
+      return row.price;
+    case "debt_ratio":
+      return row.debt_ratio_latest_pct;
+    case "roe":
+      return row.roe_latest_pct;
+    case "fcf":
+      return row.fcf_per_share_latest;
+    case "volume":
+      return row.volume_lots;
+    case "yield":
+      return row.dividend_yield_pct;
+    default:
+      return row.rank;
+  }
 }
 
 function MethodologyExplainer() {
@@ -105,6 +130,10 @@ export function BuffettStocksList() {
   }, []);
 
   const stocks = data?.stocks ?? [];
+  const { sortedRows, sortKey, sortDir, requestSort } = useSortableData(stocks, getSortValue, {
+    key: "rank",
+    dir: "asc",
+  });
 
   return (
     <Card className="w-full max-w-5xl">
@@ -140,16 +169,17 @@ export function BuffettStocksList() {
                 <thead className="text-muted-foreground">
                   <tr className="text-left">
                     <th className="py-1 pr-2 text-right">排名</th>
-                    <th className="py-1 pr-2">股票</th>
-                    <th className="py-1 pr-2 text-right">現價</th>
-                    <th className="py-1 pr-2 text-right">負債比率(1y/3y/5y)</th>
-                    <th className="py-1 pr-2 text-right">ROE(1y/3y/5y)</th>
-                    <th className="py-1 pr-2 text-right">每股FCF(1y/3y/5y)</th>
-                    <th className="py-1 pr-2 text-right">成交量(張)</th>
+                    <SortableTh sortKey="name" label="股票" align="left" activeKey={sortKey} dir={sortDir} onSort={requestSort} />
+                    <SortableTh sortKey="price" label="現價" activeKey={sortKey} dir={sortDir} onSort={requestSort} />
+                    <SortableTh sortKey="debt_ratio" label="負債比率(1y/3y/5y)" activeKey={sortKey} dir={sortDir} onSort={requestSort} />
+                    <SortableTh sortKey="roe" label="ROE(1y/3y/5y)" activeKey={sortKey} dir={sortDir} onSort={requestSort} />
+                    <SortableTh sortKey="fcf" label="每股FCF(1y/3y/5y)" activeKey={sortKey} dir={sortDir} onSort={requestSort} />
+                    <SortableTh sortKey="yield" label="殖利率" activeKey={sortKey} dir={sortDir} onSort={requestSort} />
+                    <SortableTh sortKey="volume" label="成交量(張)" activeKey={sortKey} dir={sortDir} onSort={requestSort} />
                   </tr>
                 </thead>
                 <tbody>
-                  {stocks.map((row) => (
+                  {sortedRows.map((row) => (
                     <tr key={row.symbol} className="border-t align-top">
                       <td className="py-1.5 pr-2 text-right tabular-nums text-muted-foreground">{row.rank}</td>
                       <td className="py-1.5 pr-2">
@@ -168,6 +198,9 @@ export function BuffettStocksList() {
                       </td>
                       <td className="py-1.5 pr-2 text-right">
                         <Trio latest={row.fcf_per_share_latest} y3={row.fcf_per_share_3y_avg} y5={row.fcf_per_share_5y_avg} unit="" />
+                      </td>
+                      <td className="py-1.5 pr-2 text-right tabular-nums">
+                        {row.dividend_yield_pct != null ? `${row.dividend_yield_pct.toFixed(2)}%` : "—"}
                       </td>
                       <td className="py-1.5 pr-2 text-right tabular-nums">
                         {row.volume_lots != null ? row.volume_lots.toLocaleString(undefined, { maximumFractionDigits: 0 }) : "—"}

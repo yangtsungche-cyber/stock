@@ -81,6 +81,8 @@ async def _write_to_db(candidates: list[dict], metrics_cache: dict[str, dict]) -
                 fcf_per_share_latest=c["fcf_per_share_latest"],
                 fcf_per_share_3y_avg=c["fcf_per_share_3y_avg"],
                 fcf_per_share_5y_avg=c["fcf_per_share_5y_avg"],
+                volume_lots=c.get("volume_lots"),
+                dividend_yield_pct=c.get("dividend_yield_pct"),
             ))
 
         for symbol, entry in metrics_cache.items():

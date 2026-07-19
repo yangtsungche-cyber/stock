@@ -6,6 +6,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { SortableTh } from "@/components/sortable-th";
+import { useSortableData } from "@/lib/use-sortable-data";
 import { SUGGESTION_BADGE, type Suggestion } from "@/lib/suggestion-badge";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -96,6 +98,37 @@ function ScoreCell({ score }: { score: number }) {
   );
 }
 
+function getHoldingSortValue(h: Holding, key: string): string | number | null | undefined {
+  switch (key) {
+    case "name":
+      return `${h.symbol} ${h.name}`;
+    case "shares":
+      return h.shares;
+    case "cost_basis":
+      return h.cost_basis;
+    case "close":
+      return h.close;
+    case "market_value":
+      return h.market_value;
+    case "weight_pct":
+      return h.weight_pct;
+    case "unrealized_pl":
+      return h.unrealized_pl;
+    case "unrealized_pl_pct":
+      return h.unrealized_pl_pct;
+    case "technical_score":
+      return h.technical_score;
+    case "fundamental_rating":
+      return h.fundamental_rating;
+    case "quality_badge":
+      return h.quality_badge;
+    case "suggestion":
+      return h.suggestion_label;
+    default:
+      return null;
+  }
+}
+
 export function PortfolioDashboard() {
   const [showPaste, setShowPaste] = useState(false);
   const [pasteText, setPasteText] = useState("");
@@ -169,6 +202,11 @@ export function PortfolioDashboard() {
       rows.map((row, i) => (i === index ? { ...row, [field]: Number(value) } : row))
     );
   }
+
+  const { sortedRows: sortedHoldings, sortKey, sortDir, requestSort } = useSortableData(
+    holdings,
+    getHoldingSortValue
+  );
 
   const validHoldings = holdings.filter((h) => !h.error && h.market_value != null && h.unrealized_pl != null);
   const totalMarketValue = validHoldings.reduce((sum, h) => sum + (h.market_value ?? 0), 0);
@@ -352,22 +390,22 @@ export function PortfolioDashboard() {
               <table className="w-full text-sm">
                 <thead className="text-muted-foreground">
                   <tr className="text-left">
-                    <th className="py-1 pr-2">股票</th>
-                    <th className="py-1 pr-2 text-right">股數</th>
-                    <th className="py-1 pr-2 text-right">成本均價</th>
-                    <th className="py-1 pr-2 text-right">現價</th>
-                    <th className="py-1 pr-2 text-right">市值</th>
-                    <th className="py-1 pr-2 text-right">權重%</th>
-                    <th className="py-1 pr-2 text-right">損益</th>
-                    <th className="py-1 pr-2 text-right">損益%</th>
-                    <th className="py-1 pr-2 text-right">技術分數</th>
-                    <th className="py-1 pr-2 text-right">基本面★</th>
-                    <th className="py-1 pr-2 text-center">財報狗清單</th>
-                    <th className="py-1 pr-2">建議</th>
+                    <SortableTh sortKey="name" label="股票" align="left" activeKey={sortKey} dir={sortDir} onSort={requestSort} />
+                    <SortableTh sortKey="shares" label="股數" activeKey={sortKey} dir={sortDir} onSort={requestSort} />
+                    <SortableTh sortKey="cost_basis" label="成本均價" activeKey={sortKey} dir={sortDir} onSort={requestSort} />
+                    <SortableTh sortKey="close" label="現價" activeKey={sortKey} dir={sortDir} onSort={requestSort} />
+                    <SortableTh sortKey="market_value" label="市值" activeKey={sortKey} dir={sortDir} onSort={requestSort} />
+                    <SortableTh sortKey="weight_pct" label="權重%" activeKey={sortKey} dir={sortDir} onSort={requestSort} />
+                    <SortableTh sortKey="unrealized_pl" label="損益" activeKey={sortKey} dir={sortDir} onSort={requestSort} />
+                    <SortableTh sortKey="unrealized_pl_pct" label="損益%" activeKey={sortKey} dir={sortDir} onSort={requestSort} />
+                    <SortableTh sortKey="technical_score" label="技術分數" activeKey={sortKey} dir={sortDir} onSort={requestSort} />
+                    <SortableTh sortKey="fundamental_rating" label="基本面★" activeKey={sortKey} dir={sortDir} onSort={requestSort} />
+                    <SortableTh sortKey="quality_badge" label="財報狗清單" align="center" activeKey={sortKey} dir={sortDir} onSort={requestSort} />
+                    <SortableTh sortKey="suggestion" label="建議" align="left" activeKey={sortKey} dir={sortDir} onSort={requestSort} />
                   </tr>
                 </thead>
                 <tbody>
-                  {holdings.map((h) => (
+                  {sortedHoldings.map((h) => (
                     <tr key={h.symbol} className="border-t align-top">
                       <td className="py-1.5 pr-2">
                         <Link href={`/analyze/${h.symbol}`} className="font-medium hover:underline">

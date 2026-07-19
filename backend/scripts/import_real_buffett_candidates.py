@@ -94,10 +94,14 @@ VOLUME_LOTS = {
 async def main() -> None:
     async with engine.begin() as conn:
         await conn.execute(text("ALTER TABLE buffett_candidates ADD COLUMN IF NOT EXISTS volume_lots FLOAT"))
+        await conn.execute(text("ALTER TABLE buffett_candidates ADD COLUMN IF NOT EXISTS dividend_yield_pct FLOAT"))
         await conn.execute(text("ALTER TABLE buffett_candidates ALTER COLUMN fcf_per_share_5y_avg DROP NOT NULL"))
-    print("已確認 volume_lots 欄位存在、fcf_per_share_5y_avg 已可為 NULL")
+    print("已確認 volume_lots/dividend_yield_pct 欄位存在、fcf_per_share_5y_avg 已可為 NULL")
 
     from app.services import company as company_service
+    from app.services import fundamentals
+
+    valuation = fundamentals._load_valuation()
 
     rows = []
     for symbol, name, price, d1, d3, d5, r1, r3, r5, f1, f3 in REAL_DATA:
@@ -109,6 +113,7 @@ async def main() -> None:
             "roe_latest_pct": r1, "roe_3y_avg_pct": r3, "roe_5y_avg_pct": r5,
             "fcf_per_share_latest": f1, "fcf_per_share_3y_avg": f3, "fcf_per_share_5y_avg": None,
             "volume_lots": VOLUME_LOTS.get(symbol),
+            "dividend_yield_pct": (valuation.get(symbol) or {}).get("dividend_yield"),
         })
 
     rows.sort(key=lambda r: r["roe_5y_avg_pct"], reverse=True)

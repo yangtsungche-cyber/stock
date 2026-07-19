@@ -6,6 +6,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { SortableTh } from "@/components/sortable-th";
+import { useSortableData } from "@/lib/use-sortable-data";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -78,6 +80,25 @@ function pct(v: number | null): string {
   return v === null ? "資料不足" : `${v}%`;
 }
 
+function getHistorySortValue(row: HistoryRow, key: string): string | number | null {
+  switch (key) {
+    case "date":
+      return row.analysis_date;
+    case "name":
+      return `${row.stock_code} ${row.stock_name ?? ""}`;
+    case "technical_score":
+      return row.technical_score;
+    case "price_t0":
+      return row.price_t0;
+    case "price_t20":
+      return row.price_t20;
+    case "return_20d":
+      return row.return_20d_pct;
+    default:
+      return null;
+  }
+}
+
 export function VerificationCenter() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [history, setHistory] = useState<HistoryRow[] | null>(null);
@@ -106,6 +127,12 @@ export function VerificationCenter() {
   useEffect(() => {
     reload();
   }, []);
+
+  const { sortedRows: sortedHistory, sortKey, sortDir, requestSort } = useSortableData(
+    history ?? [],
+    getHistorySortValue,
+    { key: "date", dir: "desc" }
+  );
 
   async function runBackfill() {
     setBackfilling(true);
@@ -214,18 +241,18 @@ export function VerificationCenter() {
               <table className="w-full text-sm">
                 <thead className="text-muted-foreground">
                   <tr className="text-left">
-                    <th className="py-1 pr-2">日期</th>
-                    <th className="py-1 pr-2">股票</th>
+                    <SortableTh sortKey="date" label="日期" align="left" activeKey={sortKey} dir={sortDir} onSort={requestSort} />
+                    <SortableTh sortKey="name" label="股票" align="left" activeKey={sortKey} dir={sortDir} onSort={requestSort} />
                     <th className="py-1 pr-2 text-center">燈號</th>
-                    <th className="py-1 pr-2 text-right">技術分數</th>
-                    <th className="py-1 pr-2 text-right">T0 收盤</th>
-                    <th className="py-1 pr-2 text-right">T+20 收盤</th>
-                    <th className="py-1 pr-2 text-right">20天報酬率</th>
+                    <SortableTh sortKey="technical_score" label="技術分數" activeKey={sortKey} dir={sortDir} onSort={requestSort} />
+                    <SortableTh sortKey="price_t0" label="T0 收盤" activeKey={sortKey} dir={sortDir} onSort={requestSort} />
+                    <SortableTh sortKey="price_t20" label="T+20 收盤" activeKey={sortKey} dir={sortDir} onSort={requestSort} />
+                    <SortableTh sortKey="return_20d" label="20天報酬率" activeKey={sortKey} dir={sortDir} onSort={requestSort} />
                     <th className="py-1 pr-2">建議</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {history.map((row) => (
+                  {sortedHistory.map((row) => (
                     <tr key={row.id} className="border-t align-top">
                       <td className="py-1.5 pr-2 text-muted-foreground">{row.analysis_date}</td>
                       <td className="py-1.5 pr-2">
