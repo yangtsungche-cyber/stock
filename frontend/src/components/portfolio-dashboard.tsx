@@ -89,6 +89,7 @@ type Holding = {
   estimated_dividend_total?: number | null;
   technical_score?: number;
   technical_verdict_label?: string;
+  grade?: "A" | "B" | "C" | "D";
   fundamental_rating?: number | null;
   fundamental_rating_label?: string | null;
   combined_label?: string;
@@ -102,6 +103,15 @@ const QUALITY_BADGE_COLOR: Record<"績優" | "績巴" | "巴特", string> = {
   績巴: "bg-red-600 text-white",
   績優: "bg-amber-500 text-white",
   巴特: "bg-blue-600 text-white",
+};
+
+// 訊號品質分級（A訊號廣、可信 ~ D訊號窄或已被覆蓋率封頂為中性）——不是方向性判斷，
+// 刻意不沿用紅漲/綠跌配色。
+const GRADE_BADGE_COLOR: Record<"A" | "B" | "C" | "D", string> = {
+  A: "bg-green-600 text-white",
+  B: "bg-blue-600 text-white",
+  C: "bg-amber-500 text-white",
+  D: "bg-zinc-500 text-white",
 };
 
 function PlCell({ value }: { value: number }) {
@@ -152,6 +162,8 @@ function getHoldingSortValue(h: Holding, key: string): string | number | null | 
       return h.estimated_dividend_total;
     case "technical_score":
       return h.technical_score;
+    case "grade":
+      return h.grade;
     case "fundamental_rating":
       return h.fundamental_rating;
     case "quality_badge":
@@ -590,6 +602,7 @@ export function PortfolioDashboard() {
                     <SortableTh sortKey="dividend_yield_pct" label="殖利率" activeKey={sortKey} dir={sortDir} onSort={requestSort} />
                     <SortableTh sortKey="estimated_dividend_total" label="預估股利" activeKey={sortKey} dir={sortDir} onSort={requestSort} />
                     <SortableTh sortKey="technical_score" label="技術分數" activeKey={sortKey} dir={sortDir} onSort={requestSort} />
+                    <SortableTh sortKey="grade" label="訊號品質" align="center" activeKey={sortKey} dir={sortDir} onSort={requestSort} />
                     <SortableTh sortKey="fundamental_rating" label="基本面★" activeKey={sortKey} dir={sortDir} onSort={requestSort} />
                     <SortableTh sortKey="quality_badge" label="財報狗清單" align="center" activeKey={sortKey} dir={sortDir} onSort={requestSort} />
                     <SortableTh sortKey="suggestion" label="建議" align="left" activeKey={sortKey} dir={sortDir} onSort={requestSort} />
@@ -606,7 +619,7 @@ export function PortfolioDashboard() {
                       <td className="py-1.5 pr-2 text-right tabular-nums">{h.shares.toLocaleString()}</td>
                       <td className="py-1.5 pr-2 text-right tabular-nums">{h.cost_basis.toFixed(2)}</td>
                       {h.error ? (
-                        <td className="py-1.5 pr-2 text-muted-foreground" colSpan={12}>
+                        <td className="py-1.5 pr-2 text-muted-foreground" colSpan={13}>
                           無法取得資料：{h.error}
                         </td>
                       ) : (
@@ -635,6 +648,13 @@ export function PortfolioDashboard() {
                           </td>
                           <td className="py-1.5 pr-2 text-right">
                             <ScoreCell score={h.technical_score ?? 0} />
+                          </td>
+                          <td className="py-1.5 pr-2 text-center">
+                            {h.grade ? (
+                              <Badge className={GRADE_BADGE_COLOR[h.grade]}>{h.grade}</Badge>
+                            ) : (
+                              <span className="text-muted-foreground">—</span>
+                            )}
                           </td>
                           <td className="py-1.5 pr-2 text-right tabular-nums">
                             {h.fundamental_rating != null ? `${h.fundamental_rating.toFixed(1)}` : "—"}

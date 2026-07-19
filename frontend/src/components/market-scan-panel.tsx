@@ -19,6 +19,7 @@ type ScanRow = {
   technical_score?: number;
   technical_verdict?: Verdict;
   technical_verdict_label?: string;
+  grade?: "A" | "B" | "C" | "D";
   confidence_pct?: number;
   fundamental_rating?: number | null;
   fundamental_rating_label?: string | null;
@@ -39,6 +40,14 @@ const SOURCE_LABEL: Record<ScanRow["source"], string> = {
   watchlist: "自選股",
   candidate_pool: "候選池",
   both: "自選股＋候選池",
+};
+
+// 訊號品質分級不是方向性判斷，刻意不沿用紅漲/綠跌配色（同 DecisionSummaryPanel）。
+const GRADE_BADGE_COLOR: Record<"A" | "B" | "C" | "D", string> = {
+  A: "bg-green-600 text-white",
+  B: "bg-blue-600 text-white",
+  C: "bg-amber-500 text-white",
+  D: "bg-zinc-500 text-white",
 };
 
 function ScoreCell({ score }: { score: number }) {
@@ -107,6 +116,7 @@ export function MarketScanPanel() {
                   <th className="py-1 pr-2">股票</th>
                   <th className="py-1 pr-2">來源</th>
                   <th className="py-1 pr-2 text-right">技術分數</th>
+                  <th className="py-1 pr-2 text-center">訊號品質</th>
                   <th className="py-1 pr-2 text-right">基本面★</th>
                   <th className="py-1 pr-2 text-right">信心%</th>
                   <th className="py-1 pr-2 text-center">燈號</th>
@@ -125,13 +135,20 @@ export function MarketScanPanel() {
                       <Badge variant="secondary">{SOURCE_LABEL[row.source]}</Badge>
                     </td>
                     {row.error ? (
-                      <td className="py-1.5 pr-2 text-muted-foreground" colSpan={5}>
+                      <td className="py-1.5 pr-2 text-muted-foreground" colSpan={6}>
                         無法取得資料：{row.error}
                       </td>
                     ) : (
                       <>
                         <td className="py-1.5 pr-2 text-right">
                           <ScoreCell score={row.technical_score ?? 0} />
+                        </td>
+                        <td className="py-1.5 pr-2 text-center">
+                          {row.grade ? (
+                            <Badge className={GRADE_BADGE_COLOR[row.grade]}>{row.grade}</Badge>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
                         </td>
                         <td className="py-1.5 pr-2 text-right tabular-nums">
                           {row.fundamental_rating != null ? `${row.fundamental_rating.toFixed(1)} / 5.0` : "—"}

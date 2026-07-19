@@ -103,6 +103,8 @@ async def _analyze_one(symbol: str, meta: dict) -> dict:
         "technical_score": decision_result["score"],
         "technical_verdict": decision_result["verdict"],
         "technical_verdict_label": decision_result["verdict_label"],
+        "grade": decision_result["grade"],
+        "verdict_capped": decision_result["verdict_capped"],
         "confidence_pct": decision_result["coverage"]["coverage_pct"],
         "layer_breakdown": decision_result["layer_breakdown"],
         "fundamental_rating": fundamentals_result.get("rating"),

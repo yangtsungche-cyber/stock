@@ -38,6 +38,23 @@ LAYER_LABELS = {
 TREND_BOOST = 1.15
 TREND_DAMPEN = 0.85
 
+# 覆蓋率封頂：即使分數算出來夠高，訊號基礎太窄（例如只有均線乖離率+籌碼面兩三層觸發，
+# 趨勢層/動能層完全沒表態）就不該喊出偏多/偏空——這是決策等級的硬性限制，不是把分數再打
+# 折。分數本身已經用「9層全部滿分」當固定分母正規化過一次（見 MAX_CONFIDENCE 那段說明），
+# 覆蓋率越低分數天花板本來就越低；若再把分數乘以覆蓋率折扣，等於雙重懲罰、扭曲分數本身
+# （未來要拿分數做歷史回測時，被扭曲過的分數會讓回測邏輯混亂）。改成只封頂「決策等級」，
+# 分數維持不變，兩者關注點分開——分數給後續回測用，決策等級才是要不要行動的門檻。
+# 門檻與真實案例對照：6197 佳必琪 33.3% 覆蓋率、2472 立隆電 33.3%，皆低於此門檻應封頂；
+# 1519 華城 55.6% 覆蓋率則高於門檻，不受此規則影響（但已透過 combined.py 的趨勢層確認
+# 規則另外處理其「跌深反彈被誤判為高品質布局」的問題）。
+COVERAGE_CAP_THRESHOLD = 40.0
+
+# A/B/C/D 訊號品質分級：只在決策等級為偏多/偏空（封頂後）時才有意義——中性（無論是本來
+# 就中性，還是被覆蓋率封頂降級）一律 D 級，代表「系統不建議把這當成方向性訊號」。
+GRADE_A_MIN_COVERAGE = 70.0
+GRADE_B_MIN_COVERAGE = 50.0
+GRADE_C_MIN_COVERAGE = COVERAGE_CAP_THRESHOLD
+
 # Signals carry confidence on a 0-100 scale (see granville/layers/waves/chips).
 # The overall score is normalized against this theoretical "every layer fires
 # at maximum confidence, unanimously" ceiling — not against the weight of
@@ -67,6 +84,16 @@ def _verdict(score: float) -> tuple[str, str]:
         if score >= floor:
             return code, label
     return "neutral", "中性"  # unreachable: last band floor is -inf
+
+
+def _grade(verdict: str, coverage_pct: float) -> str:
+    if verdict == "neutral":
+        return "D"
+    if coverage_pct >= GRADE_A_MIN_COVERAGE:
+        return "A"
+    if coverage_pct >= GRADE_B_MIN_COVERAGE:
+        return "B"
+    return "C"  # verdict is directional here only when coverage already cleared COVERAGE_CAP_THRESHOLD
 
 
 def _trend_multiplier(side: str, ma_alignment: str) -> float:
@@ -143,24 +170,34 @@ def analyze(granville_result: dict, waves_result: dict, layers_result: dict, chi
 
     raw_score = 100 * raw_total / max_possible_weight if max_possible_weight else 0.0
     score = round(max(-100.0, min(100.0, raw_score)), 1)
-    verdict, verdict_label = _verdict(score)
+    raw_verdict, raw_verdict_label = _verdict(score)
     tagged.sort(key=lambda s: -abs(s["contribution"]))
 
     layers_total = len(LAYER_WEIGHTS)
     layers_with_data = sum(1 for v in layer_has_data.values() if v)
     layers_fired = sum(1 for b in layer_breakdown if b["status"] == "fired")
+    coverage_pct = round(100 * layers_fired / layers_with_data, 1) if layers_with_data else 0.0
     coverage = {
         "layers_total": layers_total,
         "layers_with_data": layers_with_data,
         "layers_fired": layers_fired,
-        "coverage_pct": round(100 * layers_fired / layers_with_data, 1) if layers_with_data else 0.0,
+        "coverage_pct": coverage_pct,
         "no_data_layers": [LAYER_LABELS[l] for l, v in layer_has_data.items() if not v],
     }
+
+    # 分數本身不變（回測需要真實、未扭曲的分數）；只有「決策等級」在訊號基礎太窄時被封頂
+    # 降為中性——分數與行動門檻，兩件事分開處理。
+    verdict_capped = raw_verdict != "neutral" and coverage_pct < COVERAGE_CAP_THRESHOLD
+    verdict, verdict_label = ("neutral", "中性") if verdict_capped else (raw_verdict, raw_verdict_label)
+    grade = _grade(verdict, coverage_pct)
 
     return {
         "score": score,
         "verdict": verdict,
         "verdict_label": verdict_label,
+        "grade": grade,
+        "raw_verdict": raw_verdict,
+        "verdict_capped": verdict_capped,
         "trend_context": {
             "ma_alignment": ma_alignment,
             "note": TREND_NOTES.get(ma_alignment, "均線排列不明確，各訊號權重維持基準值"),

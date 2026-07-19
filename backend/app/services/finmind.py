@@ -26,6 +26,23 @@ HISTORY_START = (date.today() - timedelta(days=365 * 6)).isoformat()  # ~6y, cov
 _cache: dict[tuple[str, str], list[dict]] = {}
 
 
+class FinMindUnavailableError(Exception):
+    """FinMind 回應非 200（最常見是 402 = 已達免費額度上限）——跟「這檔真的沒有財報資料」
+    是兩件不同的事，不該被當成同一種「查無資料」處理。之前 `_fetch` 把兩者都吞成空 list
+    回傳，導致額度用盡時，個股基本面分析會顯示「可能為 ETF 或非公司證券」這種誤導性訊息
+    （見 6197/2472 這兩檔真實上市公司被誤判的案例——已用實際 API 回應驗證：狀態碼 402
+    "Requests reach the upper limit"，不是代號對應或欄位改版問題）。呼叫端（`buffett_screening.py`
+    /`quality_screening.py`/`portfolio.py`）都已經有各自的 `except Exception` 逐檔容錯，
+    這裡改成拋例外不會讓那些全市場批次中斷，只是讓 `fundamentals.analyze` 可以精確分辨
+    原因並顯示正確訊息。
+    """
+
+    def __init__(self, status_code: int, body: str):
+        self.status_code = status_code
+        self.body = body
+        super().__init__(f"FinMind HTTP {status_code}: {body[:200]}")
+
+
 def _fetch(dataset: str, symbol: str) -> list[dict]:
     key = (dataset, symbol)
     if key in _cache:
@@ -38,9 +55,16 @@ def _fetch(dataset: str, symbol: str) -> list[dict]:
 
     try:
         resp = requests.get(BASE_URL, params=params, headers=_HEADERS, timeout=20)
+    except requests.RequestException as e:
+        raise FinMindUnavailableError(0, str(e)) from e
+
+    if resp.status_code != 200:
+        raise FinMindUnavailableError(resp.status_code, resp.text)
+
+    try:
         data = resp.json().get("data", [])
-    except (requests.RequestException, ValueError):
-        data = []  # transient failure — don't cache, a later request may succeed
+    except ValueError:
+        data = []
 
     if data:
         _cache[key] = data

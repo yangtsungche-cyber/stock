@@ -159,9 +159,10 @@ def _render_one(report: dict, generated_at: str) -> str:
       <h1>{_e(symbol)} {_e(name)}（{_e(market)}）</h1>
       <p class="muted">資料日期：{_e(report['data_date'])}　產生時間：{generated_at}</p>
 
-      <h2 style="color:{_verdict_color(d['verdict'])}">決策摘要：{_e(d['verdict_label'])}（分數 {_e(d['score'])}）</h2>
+      <h2 style="color:{_verdict_color(d['verdict'])}">決策摘要：{_e(d['verdict_label'])}（分數 {_e(d['score'])}）　訊號品質：{_e(d['grade'])} 級</h2>
       <p>訊號完整度：{_e(d['coverage']['layers_fired'])}/{_e(d['coverage']['layers_with_data'])} 層已觸發
       （覆蓋率 {_e(d['coverage']['coverage_pct'])}%）</p>
+      {f'<p class="muted">覆蓋率低於 {_e(decision.COVERAGE_CAP_THRESHOLD)}%，決策等級已由「{_e(d["raw_verdict"])}」封頂為中性，避免少數訊號拉高整體判斷。</p>' if d.get('verdict_capped') else ''}
       <table><thead><tr><th>層級</th><th>權重</th><th>訊號數</th><th>層分數</th><th>狀態</th></tr></thead>
       <tbody>{layer_rows}</tbody></table>
 
@@ -170,7 +171,7 @@ def _render_one(report: dict, generated_at: str) -> str:
 
       <h2>基本面分析</h2>
       <p>評等：{_e(fnd.get('rating_label', '資料不足'))}</p>
-      {'<table><thead><tr><th>項目</th><th>數值</th><th>結果</th></tr></thead><tbody>' + checklist_rows + '</tbody></table>' if fnd.get('has_data') else '<p class="muted">查無財報資料（可能為 ETF 或非公司證券）。</p>'}
+      {'<table><thead><tr><th>項目</th><th>數值</th><th>結果</th></tr></thead><tbody>' + checklist_rows + '</tbody></table>' if fnd.get('has_data') else f'<p class="muted">{_e(fnd.get("summary", "查無財報資料（可能為 ETF 或非公司證券）。"))}</p>'}
 
       <h2>Investment Playbook</h2>
       <p style="color:{_verdict_color(d['verdict'])}">{_e(pb['stance_label'])}：{_e(pb['action_note'])}</p>

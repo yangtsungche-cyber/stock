@@ -118,10 +118,27 @@ def _annual_revenue_by_year(fs_by_date: dict[str, dict[str, float]]) -> dict[int
 def analyze(symbol: str) -> dict:
     symbol = symbol.strip().upper()
 
-    fs_by_date = _pivot(finmind.get_financial_statements(symbol))
-    bs_by_date = _pivot(finmind.get_balance_sheet(symbol))
-    cf_by_date = _pivot(finmind.get_cash_flow(symbol))
-    dividend_rows = finmind.get_dividend(symbol)
+    # FinMind 額度用盡（HTTP 402）時要跟「這檔真的沒有財報資料」分開處理——兩者原本都會
+    # 讓 fs_by_date/bs_by_date 變空，導致額度用盡時顯示「可能為 ETF」這種誤導訊息（曾實際
+    # 發生在 6197 佳必琪、2472 立隆電這兩檔真實上市公司身上，用真實 API 回應驗證過：狀態碼
+    # 402 "Requests reach the upper limit"，不是代號對應失效或欄位改版）。
+    try:
+        fs_by_date = _pivot(finmind.get_financial_statements(symbol))
+        bs_by_date = _pivot(finmind.get_balance_sheet(symbol))
+        cf_by_date = _pivot(finmind.get_cash_flow(symbol))
+        dividend_rows = finmind.get_dividend(symbol)
+    except finmind.FinMindUnavailableError as e:
+        reason = (
+            "FinMind API 已達呼叫上限，暫時無法取得財報資料，請稍後再試"
+            if e.status_code == 402
+            else f"FinMind API 暫時無法取得財報資料（{e.status_code or '連線失敗'}），請稍後再試"
+        )
+        return {
+            "has_data": False,
+            "profile": {}, "profitability": {}, "growth": {}, "shareholder_return": {},
+            "checklist": [], "rating": None, "rating_label": "資料不足",
+            "summary": reason,
+        }
     valuation = _load_valuation().get(symbol)
 
     has_data = bool(fs_by_date) or bool(bs_by_date)

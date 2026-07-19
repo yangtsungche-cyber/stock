@@ -220,6 +220,7 @@ async def get_combined(
         "date": ind["dates"][-1],
         "technical_score": decision_result["score"],
         "technical_verdict": decision_result["verdict"],
+        "grade": decision_result["grade"],
         **combined.analyze(decision_result, fundamentals_result),
     }
 
@@ -252,6 +253,7 @@ async def get_playbook(
         "score": decision_result["score"],
         "verdict": decision_result["verdict"],
         "verdict_label": decision_result["verdict_label"],
+        "grade": decision_result["grade"],
         **playbook.analyze(ind, granville_result, waves_result, chips_result, decision_result),
     }
 

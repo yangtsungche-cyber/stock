@@ -262,6 +262,7 @@ async def build_dashboard(db: AsyncSession, portfolio_rows: list[UserPortfolio])
             "estimated_dividend_total": estimated_dividend_total,
             "technical_score": scan_result["technical_score"],
             "technical_verdict_label": scan_result["technical_verdict_label"],
+            "grade": scan_result["grade"],
             "fundamental_rating": scan_result["fundamental_rating"],
             "fundamental_rating_label": scan_result["fundamental_rating_label"],
             "combined_label": scan_result["combined_label"],

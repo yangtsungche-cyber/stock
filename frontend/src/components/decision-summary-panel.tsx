@@ -40,11 +40,16 @@ type Coverage = {
   no_data_layers: string[];
 };
 
+type Grade = "A" | "B" | "C" | "D";
+
 type DecisionResult = {
   date: string;
   score: number;
   verdict: Verdict;
   verdict_label: string;
+  grade: Grade;
+  raw_verdict: Verdict;
+  verdict_capped: boolean;
   trend_context: { ma_alignment: string; note: string };
   coverage: Coverage;
   layer_breakdown: LayerBreakdown[];
@@ -57,6 +62,23 @@ const VERDICT_STYLE: Record<Verdict, { dot: string; badge: string }> = {
   neutral: { dot: "bg-amber-500", badge: "bg-amber-500 hover:bg-amber-500" },
   sell: { dot: "bg-emerald-400", badge: "bg-emerald-500 hover:bg-emerald-500" },
   strong_sell: { dot: "bg-emerald-600", badge: "bg-emerald-600 hover:bg-emerald-600" },
+};
+
+// 訊號品質分級不是方向性訊號（不是「看多/看空」），是「這個判斷的訊號基礎廣不廣」，所以
+// 刻意不沿用紅漲/綠跌配色——用另一套色階：A（訊號廣、可信）到 D（訊號窄或中性/被封頂）。
+const GRADE_STYLE: Record<Grade, string> = {
+  A: "bg-green-600 text-white",
+  B: "bg-blue-600 text-white",
+  C: "bg-amber-500 text-white",
+  D: "bg-zinc-500 text-white",
+};
+
+const VERDICT_LABEL: Record<Verdict, string> = {
+  strong_buy: "強烈偏多",
+  buy: "偏多",
+  neutral: "中性",
+  sell: "偏空",
+  strong_sell: "強烈偏空",
 };
 
 const MA_ALIGNMENT_LABEL: Record<string, string> = {
@@ -203,12 +225,18 @@ export function DecisionSummaryPanel({ symbol }: { symbol: string }) {
           <div className="flex items-center gap-3">
             <span className={`h-3 w-3 shrink-0 rounded-full ${style.dot}`} />
             <Badge className={style.badge}>{data.verdict_label}</Badge>
+            <Badge className={GRADE_STYLE[data.grade]}>{data.grade} 級</Badge>
             <span className="text-2xl font-semibold tabular-nums">
               {data.score > 0 ? "+" : ""}
               {data.score}
             </span>
             <span className="text-sm text-muted-foreground">綜合分數（-100 偏空 ～ +100 偏多）</span>
           </div>
+          {data.verdict_capped && (
+            <p className="text-sm text-amber-600">
+              訊號覆蓋率過低（{data.coverage.coverage_pct}%），原始判斷「{VERDICT_LABEL[data.raw_verdict]}」已封頂為中性，避免少數訊號拉高整體判斷。
+            </p>
+          )}
           <ScoreBar score={data.score} />
           <p className="text-sm text-muted-foreground">
             均線排列：{MA_ALIGNMENT_LABEL[data.trend_context.ma_alignment] ?? data.trend_context.ma_alignment}。
