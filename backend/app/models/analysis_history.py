@@ -14,6 +14,14 @@ duplicate same-day rows.
 "neutral"/"no_data") at analysis time — needed to compute per-indicator
 false-positive rates once the eventual return is known, without having to
 re-derive it from `decision.py`'s `layer_breakdown` after the fact.
+
+`signal_codes` (V3.6 pillar 2) stores the finer-grained fired-signal
+"fingerprint" — the sorted, deduped list of signal codes (e.g. ["D3", "K1"],
+see `backtest_engine.build_fingerprint`) — accumulated here so V3.6 pillar 3's
+eventual historical-match backtest engine has a real backlog to search.
+`NULL` on rows recorded before this column existed is permanent (not
+recoverable from `layer_directions` alone), not a "pending backfill" state
+like `price_t20`.
 """
 
 from datetime import date, datetime, timezone
@@ -39,6 +47,7 @@ class AnalysisHistory(Base):
     combined_label: Mapped[str] = mapped_column(String, nullable=False)
     confidence_pct: Mapped[float] = mapped_column(Float, nullable=False)
     layer_directions: Mapped[dict] = mapped_column(JSON, nullable=False)
+    signal_codes: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
 
     price_t0: Mapped[float] = mapped_column(Float, nullable=False)
     price_t20: Mapped[float | None] = mapped_column(Float, nullable=True)
