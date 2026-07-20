@@ -66,6 +66,10 @@ export function PortfolioValueChart() {
   const [noteText, setNoteText] = useState("");
   const [saving, setSaving] = useState(false);
 
+  const [snapshotStatus, setSnapshotStatus] = useState<"idle" | "loading" | "done" | "error">("idle");
+  const [snapshotError, setSnapshotError] = useState<string | null>(null);
+  const [snapshotUpdatedAt, setSnapshotUpdatedAt] = useState<string | null>(null);
+
   async function loadData() {
     setStatus("loading");
     setError(null);
@@ -90,6 +94,24 @@ export function PortfolioValueChart() {
   useEffect(() => {
     loadData();
   }, []);
+
+  // 每個交易日 18:00 有排程（.github/workflows/portfolio-snapshot.yml）自動寫入當天快照
+  // （upsert on (date, owner)，同一天重複觸發只會覆蓋，不會重複）——這顆按鈕呼叫的是同一個
+  // 端點，只有在使用者於 18:00 之後才更新庫存、等不及明天排程時才需要用到。
+  async function forceSnapshot() {
+    setSnapshotStatus("loading");
+    setSnapshotError(null);
+    try {
+      const res = await fetch(`${API_URL}/api/v1/portfolio/snapshot`, { method: "POST" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      await loadData();
+      setSnapshotUpdatedAt(new Date().toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit" }));
+      setSnapshotStatus("done");
+    } catch (err) {
+      setSnapshotError(err instanceof Error ? err.message : String(err));
+      setSnapshotStatus("error");
+    }
+  }
 
   useEffect(() => {
     if (!containerRef.current || status !== "done") return;
@@ -195,6 +217,17 @@ export function PortfolioValueChart() {
         市值每個交易日收盤後自動記錄一筆快照，累積夠多天數才會看到走勢。點圖上任一位置可以為那天加註記
         （例如大筆支出、匯入資金等），方便日後回顧市值變化的原因。
       </p>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button variant="outline" size="sm" onClick={forceSnapshot} disabled={snapshotStatus === "loading"}>
+          {snapshotStatus === "loading" ? "更新中…" : "強制更新今日快照"}
+        </Button>
+        <span className="text-xs text-muted-foreground">
+          {snapshotStatus === "idle" &&
+            "每天 18:00 排程會自動更新；若收盤（18:00）後又異動庫存，才需要用這顆按鈕立即補一筆最新的。"}
+          {snapshotStatus === "done" && `已更新今日快照（${snapshotUpdatedAt}）`}
+          {snapshotStatus === "error" && `更新失敗：${snapshotError}`}
+        </span>
+      </div>
       {status === "loading" && <p className="text-sm text-muted-foreground">讀取中…</p>}
       {status === "error" && <p className="text-sm text-muted-foreground">讀取失敗：{error}</p>}
       {status === "done" && points.length === 0 && (

@@ -12,6 +12,8 @@ not sizing a protective stop. Used unscaled it produced buffers of 8-10%+
 into a realistic stop-loss range instead.
 """
 
+from app.services.backtest_engine import compute_backtest_stats
+
 BUY_SCORE_FLOOR = 15.0
 SELL_SCORE_CEIL = -15.0
 
@@ -131,7 +133,15 @@ def _invalidation(
     return conditions
 
 
-def analyze(ind: dict, granville_result: dict, waves_result: dict, chips_result: dict, decision_result: dict) -> dict:
+def analyze(
+    ind: dict,
+    granville_result: dict,
+    waves_result: dict,
+    chips_result: dict,
+    decision_result: dict,
+    symbol: str | None = None,
+) -> dict:
+    backtest_stats = compute_backtest_stats(symbol)
     close = ind["close"][-1]
     ma20 = ind["ma"]["20"][-1]
     ma60 = ind["ma"]["60"][-1]
@@ -155,6 +165,7 @@ def analyze(ind: dict, granville_result: dict, waves_result: dict, chips_result:
             "position_sizing": {"tier": "none", "label": "觀望", "note": "資料不足。"},
             "invalidation": [],
             "disclaimer": DISCLAIMER,
+            **backtest_stats,
         }
 
     support = _support(close, ma20, ma60, pivots)
@@ -245,4 +256,5 @@ def analyze(ind: dict, granville_result: dict, waves_result: dict, chips_result:
         "position_sizing": sizing,
         "invalidation": invalidation,
         "disclaimer": DISCLAIMER,
+        **backtest_stats,
     }
