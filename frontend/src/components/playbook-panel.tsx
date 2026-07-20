@@ -30,6 +30,9 @@ type PlaybookResult = {
   position_sizing: PositionSizing;
   invalidation: string[];
   disclaimer: string;
+  backtest_20d_up_prob: number | null;
+  backtest_avg_return: number | null;
+  signal_win_rate_grade: string | null;
 };
 
 const STANCE_STYLE: Record<Stance, { dot: string; badge: string }> = {
@@ -197,6 +200,46 @@ export function PlaybookPanel({ symbol }: { symbol: string }) {
               ))}
             </ul>
           )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">📊 歷史勝率科學驗證</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground">20 日後上漲機率</p>
+              {data.backtest_20d_up_prob === null ? (
+                <Badge variant="outline">框架測試中</Badge>
+              ) : (
+                <p className="text-sm font-medium">{(data.backtest_20d_up_prob * 100).toFixed(1)}%</p>
+              )}
+            </div>
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground">20 日後平均報酬</p>
+              {data.backtest_avg_return === null ? (
+                <Badge variant="outline">框架測試中</Badge>
+              ) : (
+                <p className="text-sm font-medium">
+                  {data.backtest_avg_return > 0 ? "+" : ""}
+                  {(data.backtest_avg_return * 100).toFixed(1)}%
+                </p>
+              )}
+            </div>
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground">訊號勝率評等</p>
+              {data.signal_win_rate_grade === null ? (
+                <Badge variant="outline">框架測試中</Badge>
+              ) : (
+                <p className="text-sm font-medium">{data.signal_win_rate_grade}</p>
+              )}
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            回測統計引擎尚未串接歷史訊號資料庫，本區塊為 V3.6 預留框架，待後續版本補上實際統計數據。
+          </p>
         </CardContent>
       </Card>
 

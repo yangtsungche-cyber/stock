@@ -51,7 +51,7 @@ async def analyze_full(symbol: str) -> dict:
     decision_result = decision.analyze(granville_result, waves_result, layers_result, chips_result)
     fundamentals_result = await asyncio.to_thread(fundamentals.analyze, symbol)
     combined_result = combined.analyze(decision_result, fundamentals_result)
-    playbook_result = playbook.analyze(ind, granville_result, waves_result, chips_result, decision_result)
+    playbook_result = playbook.analyze(ind, granville_result, waves_result, chips_result, decision_result, symbol=symbol)
 
     return {
         "symbol": symbol,
@@ -188,6 +188,14 @@ def _render_one(report: dict, generated_at: str) -> str:
       <p><strong>失效條件：</strong></p>
       <ul>{invalidation_html}</ul>
       <p class="muted small">{_e(pb['disclaimer'])}</p>
+
+      <h2>📊 歷史勝率科學驗證</h2>
+      <table><tbody>
+        <tr><td>20 日後上漲機率</td><td class="num">{f"{pb['backtest_20d_up_prob'] * 100:.1f}%" if pb['backtest_20d_up_prob'] is not None else '框架測試中'}</td></tr>
+        <tr><td>20 日後平均報酬</td><td class="num">{f"{pb['backtest_avg_return'] * 100:+.1f}%" if pb['backtest_avg_return'] is not None else '框架測試中'}</td></tr>
+        <tr><td>訊號勝率評等</td><td class="num">{_e(pb['signal_win_rate_grade']) if pb['signal_win_rate_grade'] is not None else '框架測試中'}</td></tr>
+      </tbody></table>
+      <p class="muted small">回測統計引擎尚未串接歷史訊號資料庫，本區塊為 V3.6 預留框架，待後續版本補上實際統計數據。</p>
 
       <h2>八層訊號明細</h2>
       {signal_layers_html}

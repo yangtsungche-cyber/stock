@@ -254,7 +254,7 @@ async def get_playbook(
         "verdict": decision_result["verdict"],
         "verdict_label": decision_result["verdict_label"],
         "grade": decision_result["grade"],
-        **playbook.analyze(ind, granville_result, waves_result, chips_result, decision_result),
+        **playbook.analyze(ind, granville_result, waves_result, chips_result, decision_result, symbol=symbol),
     }
 
 
