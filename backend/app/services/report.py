@@ -88,6 +88,15 @@ def _signal_color(side: str) -> str:
     return RED if side == "buy" else EMERALD if side == "sell" else MUTED
 
 
+def _playbook_note_line(stance_label: str, action_note: str) -> str:
+    """`action_note` already starts with `stance_label + '：'` for the V3.4 neutral-stance
+    narratives (e.g. "觀望：目前股價…") but not for buy/sell — prepending the label
+    unconditionally produced a doubled "觀望：觀望：…" for the neutral case."""
+    if action_note.startswith(f"{stance_label}："):
+        return _e(action_note)
+    return f"{_e(stance_label)}：{_e(action_note)}"
+
+
 def _verdict_color(code: str) -> str:
     if code in ("strong_buy", "buy"):
         return RED
@@ -174,8 +183,8 @@ def _render_one(report: dict, generated_at: str) -> str:
       {'<table><thead><tr><th>項目</th><th>數值</th><th>結果</th></tr></thead><tbody>' + checklist_rows + '</tbody></table>' if fnd.get('has_data') else f'<p class="muted">{_e(fnd.get("summary", "查無財報資料（可能為 ETF 或非公司證券）。"))}</p>'}
 
       <h2>Investment Playbook</h2>
-      <p style="color:{_verdict_color(d['verdict'])}">{_e(pb['stance_label'])}：{_e(pb['action_note'])}</p>
-      <table><tbody>
+      <p style="color:{_verdict_color(d['verdict'])}">{_playbook_note_line(pb['stance_label'], pb['action_note'])}</p>
+      <table style="margin-bottom: 1.2em;"><tbody>
         <tr><td>參考收盤價</td><td class="num">{_e(pb['reference_levels']['close'])}</td></tr>
         <tr><td>支撐</td><td class="num">{_e(pb['reference_levels']['support'])}</td></tr>
         <tr><td>壓力</td><td class="num">{_e(pb['reference_levels']['resistance'])}</td></tr>
@@ -189,8 +198,8 @@ def _render_one(report: dict, generated_at: str) -> str:
       <ul>{invalidation_html}</ul>
       <p class="muted small">{_e(pb['disclaimer'])}</p>
 
-      <h2>📊 歷史勝率科學驗證</h2>
-      <table><tbody>
+      <h2 style="margin-top: 1.6em;">📊 歷史勝率科學驗證</h2>
+      <table style="margin-bottom: 1.2em;"><tbody>
         <tr><td>20 日後上漲機率</td><td class="num">{f"{pb['backtest_20d_up_prob'] * 100:.1f}%" if pb['backtest_20d_up_prob'] is not None else '框架測試中'}</td></tr>
         <tr><td>20 日後平均報酬</td><td class="num">{f"{pb['backtest_avg_return'] * 100:+.1f}%" if pb['backtest_avg_return'] is not None else '框架測試中'}</td></tr>
         <tr><td>訊號勝率評等</td><td class="num">{_e(pb['signal_win_rate_grade']) if pb['signal_win_rate_grade'] is not None else '框架測試中'}</td></tr>
