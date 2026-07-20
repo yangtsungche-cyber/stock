@@ -84,6 +84,7 @@ async def record_history(db: AsyncSession, results: list[dict], analysis_date: d
             combined_label=r["combined_label"],
             confidence_pct=r["confidence_pct"],
             layer_directions=layer_directions(r["layer_breakdown"]),
+            signal_codes=r.get("signal_codes"),
             price_t0=r["close"],
         )
         stmt = stmt.on_conflict_do_update(
@@ -96,6 +97,7 @@ async def record_history(db: AsyncSession, results: list[dict], analysis_date: d
                 "combined_label": stmt.excluded.combined_label,
                 "confidence_pct": stmt.excluded.confidence_pct,
                 "layer_directions": stmt.excluded.layer_directions,
+                "signal_codes": stmt.excluded.signal_codes,
                 "price_t0": stmt.excluded.price_t0,
             },
         )

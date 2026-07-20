@@ -29,7 +29,19 @@ import asyncio
 import logging
 
 from app.models import FundamentalCandidate, StockWatchlist
-from app.services import chips, combined, company, decision, fundamentals, granville, indicators, layers, twse, waves
+from app.services import (
+    backtest_engine,
+    chips,
+    combined,
+    company,
+    decision,
+    fundamentals,
+    granville,
+    indicators,
+    layers,
+    twse,
+    waves,
+)
 from app.services.yahoo import StockNotFoundError, get_price_dataframe
 
 logger = logging.getLogger(__name__)
@@ -77,6 +89,7 @@ async def _analyze_one(symbol: str, meta: dict) -> dict:
     layers_result = layers.analyze_layers(ind)
     chips_result = chips.analyze(margin_history, institutional_history)
     decision_result = decision.analyze(granville_result, waves_result, layers_result, chips_result)
+    signal_codes = backtest_engine.build_fingerprint(decision_result["signals"])
 
     candidate: FundamentalCandidate | None = meta.get("candidate")
     if candidate is not None:
@@ -107,6 +120,7 @@ async def _analyze_one(symbol: str, meta: dict) -> dict:
         "verdict_capped": decision_result["verdict_capped"],
         "confidence_pct": decision_result["coverage"]["coverage_pct"],
         "layer_breakdown": decision_result["layer_breakdown"],
+        "signal_codes": signal_codes,
         "fundamental_rating": fundamentals_result.get("rating"),
         "fundamental_rating_label": fundamentals_result.get("rating_label"),
         "combined_label": combined_result["combined_label"],

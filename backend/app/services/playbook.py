@@ -12,7 +12,7 @@ not sizing a protective stop. Used unscaled it produced buffers of 8-10%+
 into a realistic stop-loss range instead.
 """
 
-from app.services.backtest_engine import compute_backtest_stats
+from app.services.backtest_engine import build_fingerprint, compute_backtest_stats
 
 BUY_SCORE_FLOOR = 15.0
 SELL_SCORE_CEIL = -15.0
@@ -141,7 +141,8 @@ def analyze(
     decision_result: dict,
     symbol: str | None = None,
 ) -> dict:
-    backtest_stats = compute_backtest_stats(symbol)
+    fingerprint = build_fingerprint(decision_result["signals"])
+    backtest_stats = compute_backtest_stats(symbol, fingerprint)
     close = ind["close"][-1]
     ma20 = ind["ma"]["20"][-1]
     ma60 = ind["ma"]["60"][-1]
