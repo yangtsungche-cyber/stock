@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.database import get_db
+from app.core.database import AsyncSessionLocal, get_db
 from app.models import FundamentalCandidate, StockWatchlist
 from app.services import scan, verification
 
@@ -30,5 +30,13 @@ async def run_market_scan(
         candidates = list(candidates_result.scalars().all())
 
     results = await scan.run_scan(watchlist_entries, candidates, symbols_override=symbols_override)
-    await verification.record_history(db, results, verification.taiwan_today())
+
+    # `db` was opened before `run_scan`, which takes minutes for a full watchlist+candidate-pool
+    # run — Neon (serverless Postgres) can close a connection that sits idle that long, so reusing
+    # `db` here fails with "connection is closed" (same class of bug as `portfolio.build_dashboard`'s
+    # DB-reads-before-the-long-scan fix; here we still need to *write* after the scan, so the fix is
+    # a fresh session instead of avoiding the post-scan DB touch entirely).
+    async with AsyncSessionLocal() as write_db:
+        await verification.record_history(write_db, results, verification.taiwan_today())
+
     return {"count": len(results), "results": results}
