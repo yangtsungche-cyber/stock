@@ -18,6 +18,14 @@ TECHNICAL_BEARISH = {"sell", "strong_sell"}
 # 乖離率過大+外資轉買衝分，是「跌深反彈」不是「趨勢轉強」。
 TREND_LAYERS = {"granville", "waves"}
 
+# 葛蘭碧法則自己的 8 條規則裡，B4（超跌反彈買點）／S4（超漲回落賣點）本質上是逆勢的乖離率
+# 極值反彈訊號——均線仍是空頭排列時一樣能觸發（見 granville.py：B4 唯一條件是乖離率超跌+
+# 單日反彈，不像 B1 要求均線方向剛翻轉、B2/B3 要求均線已經在漲），不能拿來當「趨勢層確認」
+# 的證據，否則會放過「均線空頭排列下純靠 B4 觸發，卻被判定技術與基本面同步轉強」這種案例
+# （2026-07-20 實測 1519 華城：ma_alignment=bearish，葛蘭碧層唯一訊號是 B4，全部 7 個觸發
+# 訊號無一例外都是超跌/超買型指標，卻因為葛蘭碧層「有訊號」就被判定趨勢已確認）。
+TREND_CONFIRMING_GRANVILLE_CODES = {"B1", "B2", "B2-weak", "B3", "S1", "S2", "S2-weak", "S3"}
+
 COMBINED_LABELS = {
     ("bullish", "strong"): "技術與基本面同步轉強，屬高品質布局機會",
     ("bullish", "moderate"): "技術轉強，基本面中規中矩，可留意但非最優質標的",
@@ -34,7 +42,7 @@ COMBINED_LABELS = {
 # weak 那檔本來就已經用「慎防追高」提出警訊，不需要再降級。見 1519 華城案例：KD死亡交叉、
 # 葛蘭碧與波浪理論皆中性，純靠均線乖離率+外資轉買衝分，卻被判定「高品質布局機會」——
 # 這種純籌碼/短線指標推升的偏多，跟真正趨勢轉強是兩回事。
-TREND_UNCONFIRMED_BULLISH_LABEL = "跌深後籌碼初步止穩，留意反彈機會，但大趨勢尚未翻多，不宜過度追價"
+TREND_UNCONFIRMED_BULLISH_LABEL = "屬跌深後籌碼與技術面初步止穩反彈，大趨勢尚未全面翻多，不宜過度追價"
 
 
 def _technical_direction(verdict: str) -> str:
@@ -56,15 +64,20 @@ def _fundamental_tier(rating: float | None) -> str | None:
 
 
 def _trend_confirmed(decision_result: dict, direction: str) -> bool:
-    """大趨勢層（葛蘭碧法則／波浪理論）是否至少有一層朝這個方向確認——避免把純粹靠均線
-    乖離率／籌碼面這種短線訊號堆出的分數，講成語氣積極的「技術轉強」。中性方向不需要
-    趨勢確認（沒有方向性主張可言）。"""
+    """大趨勢層（葛蘭碧法則／波浪理論）是否至少有一個「真正順勢」的訊號朝這個方向確認——
+    避免把純粹靠均線乖離率／籌碼面這種短線訊號堆出的分數，講成語氣積極的「技術轉強」。
+    葛蘭碧法則的 B4／S4 本身就是逆勢的超跌/超漲反彈訊號，即使觸發也不算數（見
+    TREND_CONFIRMING_GRANVILLE_CODES 上方的說明）；波浪理論沒有這種逆勢訊號，任何同向觸發
+    都算數。中性方向不需要趨勢確認（沒有方向性主張可言）。"""
     if direction not in ("bullish", "bearish"):
         return True
-    wants_positive = direction == "bullish"
-    for layer in decision_result["layer_breakdown"]:
-        if layer["layer"] in TREND_LAYERS and layer["status"] == "fired" and (layer["score"] > 0) == wants_positive:
-            return True
+    wanted_side = "buy" if direction == "bullish" else "sell"
+    for s in decision_result["signals"]:
+        if s["layer"] not in TREND_LAYERS or s["side"] != wanted_side:
+            continue
+        if s["layer"] == "granville" and s["code"] not in TREND_CONFIRMING_GRANVILLE_CODES:
+            continue
+        return True
     return False
 
 
