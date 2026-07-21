@@ -7,6 +7,8 @@ from app.models.morning_briefing import MorningBriefing
 from app.models.portfolio_annotation import PortfolioAnnotation
 from app.models.portfolio_value_snapshot import PortfolioValueSnapshot
 from app.models.quality_stock_candidate import QualityStockCandidate
+from app.models.teacher_recommendation import TeacherRecommendation
+from app.models.teacher_recommendation_source import TeacherRecommendationSource
 from app.models.user_portfolio import UserPortfolio
 from app.models.watchlist import StockWatchlist
 
@@ -21,5 +23,7 @@ __all__ = [
     "PortfolioValueSnapshot",
     "QualityStockCandidate",
     "StockWatchlist",
+    "TeacherRecommendation",
+    "TeacherRecommendationSource",
     "UserPortfolio",
 ]

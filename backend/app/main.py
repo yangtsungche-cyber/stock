@@ -14,6 +14,7 @@ from app.api.v1.portfolio import router as portfolio_router
 from app.api.v1.quality_stocks import router as quality_stocks_router
 from app.api.v1.scan import router as scan_router
 from app.api.v1.stocks import router as stocks_router
+from app.api.v1.teacher_recommendations import router as teacher_recommendations_router
 from app.api.v1.verification import router as verification_router
 from app.api.v1.watchlist import router as watchlist_router
 from app.core.config import get_settings
@@ -71,6 +72,7 @@ app.include_router(portfolio_router, prefix="/api/v1")
 app.include_router(quality_stocks_router, prefix="/api/v1")
 app.include_router(scan_router, prefix="/api/v1")
 app.include_router(stocks_router, prefix="/api/v1")
+app.include_router(teacher_recommendations_router, prefix="/api/v1")
 app.include_router(verification_router, prefix="/api/v1")
 app.include_router(watchlist_router, prefix="/api/v1")
 

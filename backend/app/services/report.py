@@ -246,3 +246,76 @@ def render_pdf(reports: list[dict]) -> bytes:
     # present in the deployed container (see Dockerfile), not necessarily in every dev environment
 
     return HTML(string=render_html(reports)).write_pdf()
+
+
+def _star_display(value: float | None) -> str:
+    if value is None:
+        return "—"
+    full = int(value)
+    half = "☆" if value - full >= 0.5 else ""
+    return "★" * full + half or "—"
+
+
+def _rank_display(rank: int | None) -> str:
+    return _e(rank) if rank is not None else "—"
+
+
+def render_teacher_recommendations_html(rows: list[dict]) -> str:
+    """老師建議清單的 PDF——跟 `render_html` 分開一支，因為資料形狀是「一份清單多檔股票」
+    （固定欄位的表格），不是 `_render_one` 那種「每檔股票一整份完整報告」，用同一支函式硬套
+    反而要塞一堆 if，不如另開一支表格導向的 render，共用同樣的顏色常數/字體/A4 版面設定。
+    """
+    generated_at = datetime.now(timezone.utc).astimezone().strftime("%Y-%m-%d %H:%M")
+
+    body_rows = "".join(
+        f"""<tr>
+          <td class="num">{_rank_display(r.get('system_rank'))}</td>
+          <td class="num muted">{_rank_display(r.get('teacher_rank'))}</td>
+          <td>{_e(r['symbol'])} {_e(r['name'])}</td>
+          <td class="num">{_e(r.get('close'))}</td>
+          <td>{_e(r.get('main_industry'))}</td>
+          <td>{_star_display(r.get('long_term_rating'))}</td>
+          <td>{_e(r.get('investment_category'))}</td>
+          <td>{_star_display(r.get('ai_benefit_rating'))}</td>
+          <td>{_e(r.get('volatility'))}</td>
+          <td>{_e(r.get('suitable_strategy'))}</td>
+          <td style="color:{_verdict_color(r.get('technical_verdict', 'neutral'))}">
+            {_e(r.get('technical_verdict_label'))}（{_e(r.get('grade'))}）
+          </td>
+          <td class="num">{_e(r.get('confidence_pct'))}%</td>
+          <td>{_star_display(r.get('fundamental_rating'))}</td>
+          <td class="num">{_e(r.get('composite_score'))}</td>
+        </tr>""" if not r.get("error") else
+        f"""<tr><td class="num">—</td><td class="num muted">{_rank_display(r.get('teacher_rank'))}</td>
+          <td>{_e(r['symbol'])} {_e(r['name'])}</td>
+          <td colspan="11" class="muted">無法取得分析資料：{_e(r['error'])}</td></tr>"""
+        for r in rows
+    )
+
+    style = """
+    <style>
+      @page { size: A4 landscape; margin: 1.2cm; }
+      body { font-family: 'Noto Sans TC', sans-serif; font-size: 8.5pt; color: #111827; }
+      h1 { font-size: 15pt; margin-bottom: 0.2em; }
+      table { width: 100%; border-collapse: collapse; }
+      th, td { border-bottom: 1px solid #e5e7eb; padding: 3px 5px; text-align: left; font-size: 8pt; }
+      td.num, th.num { text-align: right; }
+      .muted { color: #6b7280; }
+    </style>
+    """
+    return f"""<html><head><meta charset='utf-8'>{style}</head><body>
+      <h1>老師建議清單</h1>
+      <p class="muted">產生時間：{generated_at}　共 {len(rows)} 檔
+      系統排名＝0.6×技術分數＋0.4×AI綜合評判品質星等（詳見前端說明），老師排名為原始參考值，未納入計算</p>
+      <table><thead><tr>
+        <th class="num">系統排名</th><th class="num">老師排名</th><th>股票</th><th class="num">現價</th>
+        <th>主要產業</th><th>長期評價</th><th>投資分類</th><th>AI受惠程度</th><th>波動程度</th><th>適合策略</th>
+        <th>技術分級</th><th class="num">訊號品質</th><th>基本面</th><th class="num">綜合分數</th>
+      </tr></thead><tbody>{body_rows}</tbody></table>
+    </body></html>"""
+
+
+def render_teacher_recommendations_pdf(rows: list[dict]) -> bytes:
+    from weasyprint import HTML  # lazy import, same reasoning as render_pdf
+
+    return HTML(string=render_teacher_recommendations_html(rows)).write_pdf()
