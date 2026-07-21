@@ -71,7 +71,7 @@ async def get_portfolio_summary(db: AsyncSession = Depends(get_db)) -> dict:
     """
     result = await db.execute(select(UserPortfolio))
     rows = list(result.scalars().all())
-    return portfolio.build_summary(rows)
+    return await portfolio.build_summary(rows)
 
 
 @router.get("")
@@ -95,7 +95,7 @@ async def create_portfolio_snapshot(db: AsyncSession = Depends(get_db)) -> dict:
     """
     result = await db.execute(select(UserPortfolio))
     rows = list(result.scalars().all())
-    values_by_owner = portfolio.snapshot_owner_values(rows)
+    values_by_owner = await portfolio.snapshot_owner_values(rows)
 
     today = datetime.now(timezone.utc).date()
     for owner, market_value in values_by_owner.items():

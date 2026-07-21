@@ -50,6 +50,20 @@ def dataframe_to_candles(df: pd.DataFrame) -> list[dict]:
     ]
 
 
+async def get_latest_close(symbol: str) -> float | None:
+    """Just today's real closing price, cheaply — a short `period="5d"` fetch (not the full
+    2y history `get_price_dataframe`'s other callers use for indicators), so many symbols can
+    be fetched concurrently for a portfolio summary without paying for 8-layer analysis on each.
+    Returns `None` (not raising) on a lookup miss — callers treat this the same as any other
+    per-symbol data gap.
+    """
+    try:
+        df, _ = await get_price_dataframe(symbol, interval="1d", period="5d")
+    except StockNotFoundError:
+        return None
+    return round(float(df["Close"].iloc[-1]), 2)
+
+
 async def get_price_history(symbol: str, interval: str = "1d", period: str = "6mo") -> dict:
     df, yahoo_symbol = await get_price_dataframe(symbol, interval=interval, period=period)
     return {

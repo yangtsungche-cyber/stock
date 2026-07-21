@@ -14,13 +14,14 @@ bullish/neutral/bearish × strong/moderate/weak buckets onto the same 4-tier sch
 emerald=bearish/減碼 — NOT a new color convention).
 """
 
+import asyncio
 from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import BuffettCandidate, QualityStockCandidate, UserPortfolio
-from app.services import combined, company, finmind, fundamentals, scan, screening
+from app.services import combined, company, finmind, fundamentals, scan, yahoo
 
 # 賣出成本估算：手續費用「牌告未折」費率, 證交稅依商品類型（一般股票 0.3%、股票型 ETF
 # 0.1%、債券型 ETF 免稅——這是稅法規定, 不是券商給的折扣）。實際手續費視券商折扣（常見
@@ -278,21 +279,43 @@ async def build_dashboard(db: AsyncSession, portfolio_rows: list[UserPortfolio])
     return dashboard
 
 
-def build_summary(portfolio_rows: list[UserPortfolio]) -> dict:
+_QUOTE_CONCURRENCY = 5  # matches scan.py's own per-symbol concurrency cap for Yahoo Finance calls
+
+
+async def _load_latest_closes(symbols: list[str]) -> dict[str, float]:
+    sem = asyncio.Semaphore(_QUOTE_CONCURRENCY)
+
+    async def _fetch(symbol: str) -> tuple[str, float | None]:
+        async with sem:
+            return symbol, await yahoo.get_latest_close(symbol)
+
+    pairs = await asyncio.gather(*(_fetch(s) for s in symbols))
+    return {symbol: close for symbol, close in pairs if close is not None}
+
+
+async def build_summary(portfolio_rows: list[UserPortfolio]) -> dict:
     """各成員（我/太太/女兒...）+ 總計的市值/損益/損益%/預估股利概況。
 
     刻意不跑 `scan.run_scan` 的八層技術面/基本面分析（那是分鐘等級的即時運算，見
-    `build_dashboard`）——總覽頁只要market_value/損益/殖利率，全部來自已經在別處使用的
-    bulk 快照（`screening._load_daily_quotes` 的當日收盤價、`fundamentals._load_valuation`
-    的殖利率），不必為了一個總覽數字就跑全家庭所有持股的完整即時分析。
+    `build_dashboard`）——只抓每檔的最新收盤價（`yahoo.get_latest_close`，5 天期短查詢，
+    不算 2 年線圖/8 層指標），並發抓取，遠比完整儀表板便宜。
+
+    原本這裡用的是 `screening._load_daily_quotes()`（TWSE/TPEx 的「當日」bulk 收盤價快照），
+    改用 Yahoo Finance 的原因：使用者連續兩天回報「持股總覽」跟「持股盤點與建議」總市值對不
+    上，實際追查 TWSE `STOCK_DAY_ALL` 回應本身的 `Date` 欄位（如 `"1150720"`，即民國115年
+    07月20日）發現該 API 在傍晚查詢時仍在回傳前一交易日的收盤價，晚於 Yahoo Finance 已經
+    更新的當日收盤——TWSE 官方公開資料本身有已知的當日發布延遲，不是我方程式邏輯錯誤，但
+    `build_summary`（原本）沒有任何新鮮度檢查就直接當作「今天」使用，才會出現這種一整天的
+    落差，且跟 `build_dashboard`（本來就是 Yahoo Finance 來源）互相矛盾。統一兩邊的價格
+    來源後兩個頁面的總市值會一致，不會再有「兩個數字哪個才對」的困惑。
     """
-    daily_quotes = screening._load_daily_quotes()
+    symbols = sorted({row.symbol for row in portfolio_rows})
+    closes = await _load_latest_closes(symbols)
     valuation = fundamentals._load_valuation()
 
     by_owner: dict[str, list[dict]] = {}
     for row in portfolio_rows:
-        quote = daily_quotes.get(row.symbol)
-        close = quote["price"] if quote else None
+        close = closes.get(row.symbol)
         entry: dict = {"symbol": row.symbol, "name": row.name}
         if close is None:
             entry["error"] = True
@@ -341,11 +364,11 @@ def build_summary(portfolio_rows: list[UserPortfolio]) -> dict:
     return {"owners": owners, "total": total}
 
 
-def snapshot_owner_values(portfolio_rows: list[UserPortfolio]) -> dict[str, float]:
+async def snapshot_owner_values(portfolio_rows: list[UserPortfolio]) -> dict[str, float]:
     """今天每個成員的市值——供每日排程寫入 `portfolio_value_snapshots`, 畫市值歷史走勢圖用。
 
-    直接沿用 `build_summary` 同一套 bulk 快照算法（cheap, 非即時全掃描）, 只取每個成員的
-    市值數字, 不需要重複實作一次。
+    直接沿用 `build_summary` 同一套邏輯（cheap, 非即時全掃描）, 只取每個成員的市值數字,
+    不需要重複實作一次。
     """
-    summary = build_summary(portfolio_rows)
+    summary = await build_summary(portfolio_rows)
     return {o["owner"]: o["market_value"] for o in summary["owners"]}
