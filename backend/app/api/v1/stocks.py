@@ -14,6 +14,7 @@ from app.services import (
     indicators,
     layers,
     playbook,
+    position,
     report,
     twse,
     waves,
@@ -184,11 +185,13 @@ async def get_decision(
     waves_result = waves.analyze(df)
     layers_result = layers.analyze_layers(ind)
     chips_result = chips.analyze(margin_history, institutional_history)
+    decision_result = decision.analyze(granville_result, waves_result, layers_result, chips_result)
     return {
         "symbol": symbol.strip().upper(),
         "yahoo_symbol": yahoo_symbol,
         "date": ind["dates"][-1],
-        **decision.analyze(granville_result, waves_result, layers_result, chips_result),
+        **decision_result,
+        **position.analyze(decision_result),
     }
 
 
