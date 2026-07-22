@@ -279,16 +279,19 @@ def render_teacher_recommendations_html(rows: list[dict]) -> str:
           <td>{_star_display(r.get('ai_benefit_rating'))}</td>
           <td>{_e(r.get('volatility'))}</td>
           <td>{_e(r.get('suitable_strategy'))}</td>
+          <td class="num" style="color:{_verdict_color(r.get('technical_verdict', 'neutral'))}">
+            {_e(r.get('technical_score'))}
+          </td>
           <td style="color:{_verdict_color(r.get('technical_verdict', 'neutral'))}">
             {_e(r.get('technical_verdict_label'))}（{_e(r.get('grade'))}）
           </td>
           <td class="num">{_e(r.get('confidence_pct'))}%</td>
-          <td>{_star_display(r.get('fundamental_rating'))}</td>
+          <td class="muted">{_star_display(r.get('fundamental_rating'))}</td>
           <td class="num">{_e(r.get('composite_score'))}</td>
         </tr>""" if not r.get("error") else
         f"""<tr><td class="num">—</td><td class="num muted">{_rank_display(r.get('teacher_rank'))}</td>
           <td>{_e(r['symbol'])} {_e(r['name'])}</td>
-          <td colspan="11" class="muted">無法取得分析資料：{_e(r['error'])}</td></tr>"""
+          <td colspan="12" class="muted">無法取得分析資料：{_e(r['error'])}</td></tr>"""
         for r in rows
     )
 
@@ -305,12 +308,14 @@ def render_teacher_recommendations_html(rows: list[dict]) -> str:
     """
     return f"""<html><head><meta charset='utf-8'>{style}</head><body>
       <h1>老師建議清單</h1>
-      <p class="muted">產生時間：{generated_at}　共 {len(rows)} 檔
-      系統排名＝0.6×技術分數＋0.4×AI綜合評判品質星等（詳見前端說明），老師排名為原始參考值，未納入計算</p>
+      <p class="muted">產生時間：{generated_at}　共 {len(rows)} 檔<br/>
+      系統排名＝0.6×技術分數＋0.4×AI綜合評判品質星等；AI綜合評判品質星等＝(長期評價+AI受惠程度)/2 換算成 -100..+100。
+      老師排名為原始參考值，未納入計算。技術分級／訊號品質為決策系統的資料覆蓋率封頂顯示（詳見前端說明），覆蓋率過低時分級會顯示「中性」但技術分數本身不受影響，排名計算一律採用技術分數，不是分級。
+      「基本面」為財報評等，僅供參考，未納入系統排名計算。</p>
       <table><thead><tr>
         <th class="num">系統排名</th><th class="num">老師排名</th><th>股票</th><th class="num">現價</th>
         <th>主要產業</th><th>長期評價</th><th>投資分類</th><th>AI受惠程度</th><th>波動程度</th><th>適合策略</th>
-        <th>技術分級</th><th class="num">訊號品質</th><th>基本面</th><th class="num">綜合分數</th>
+        <th class="num">技術分數</th><th>技術分級</th><th class="num">訊號品質</th><th>基本面（僅參考）</th><th class="num">綜合分數</th>
       </tr></thead><tbody>{body_rows}</tbody></table>
     </body></html>"""
 
