@@ -191,6 +191,27 @@ def analyze(
 
         entry_zone = {"low": entry_low, "high": entry_high}
 
+        # 現價偏離區間防守機制：綜合分數偏多不代表「現在」是好買點——若現價已經
+        # 衝過建議進場區間上緣，或算出來的風報比已經低於門檻，繼續掛著「偏多操作」
+        # 的標籤與文案會誤導使用者去追價。兩者任一成立就要把標籤與頂部文案都换成
+        # 明確的「等待拉回」警示，而不是靜靜地只把部位建議調小。
+        price_above_entry = close > entry_high
+        poor_risk_reward = risk_reward is not None and risk_reward < MIN_RISK_REWARD
+        if price_above_entry or poor_risk_reward:
+            stance_label = "偏多（等待拉回/嚴禁追價）"
+            if price_above_entry:
+                rr_clause = f"目前風報比僅 {risk_reward:.2f}，" if poor_risk_reward else ""
+                action_note = (
+                    f"現價（{close:.2f}）已高於進場區間上限 {entry_high:.2f}，{rr_clause}"
+                    f"切勿追高，請靜待回測至 {entry_low:.2f} ～ {entry_high:.2f} 區間再行布局。"
+                )
+            else:
+                action_note = (
+                    f"訊號雖偏多，但目前風險報酬比約 {risk_reward:.2f}，"
+                    f"低於建議門檻 {MIN_RISK_REWARD:.1f}，此價位追價的報酬空間有限，"
+                    f"建議靜待回測至進場區間 {entry_low:.2f} ～ {entry_high:.2f} 再行布局。"
+                )
+
     elif score <= SELL_SCORE_CEIL:
         stance, stance_label = "sell", "偏空／建議減碼"
         action_note = "訊號整體偏空，非新進場買點；若已持有部位，建議留意防守價與逢高調節。"
